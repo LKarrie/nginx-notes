@@ -555,6 +555,80 @@ stream{
 
 ### 监控
 
+社区版本的NGINX监控手段其实不多，开源可用的module [ngx_http_stub_status_module](https://nginx.org/en/docs/http/ngx_http_stub_status_module.html) 展示的内容也太少了
+
+如果你用的是开源社区版本的NGINX，非常推荐使用一下三方模块 [vts](https://github.com/vozlt/nginx-module-vts) 这个真是一个良心的模块 
+
+（除了监控，我发现最近他还支持了主动探测，有时间试一下 - 20230606）
+
+NGINX 构建加入这个模块之后 添加一些vts配置 即可以通过 http的页面（页面访问路径是可以配置 http://ip:port/location） 查看NGINX的很多信息
+
+```nginx
+http{
+    
+    # ....
+    # 设置 vts共享内存
+    vhost_traffic_status_zone;
+    # 开启自定义filter分组监控
+    vhost_traffic_status_filter on;
+    # 按请求状态和配置server_name 分组
+    vhost_traffic_status_filter_by_set_key $status $server_name;
+
+    # 访问 vts 监控的 server 配置
+    server {
+         # 访问 vts 监控的端口
+         listen 9913;
+         # 访问 vts 监控的路径
+         location /status {
+           access_log off;
+           # 允许自身访问 例如 curl测试
+           allow 127.0.0.1;
+           # allow prometheus ip
+           # allow 1.1.1.1;    
+           # 禁止除了白名单ip以外的所有访问 这个很重要 
+           deny all;
+           # 默认展示 html 页面显示监控状态
+           vhost_traffic_status_display;
+           vhost_traffic_status_display_format html;
+         } 
+    } 
+    
+    # ....
+}
+```
+
+
+
+引用一下官方的一张图，展示一下vts的监控html页面
+
+![nginx-vts](assets/nginx-vts)
+
+详细分析一下这个html展示的内容
+
+* Server Main 
+
+  server main 主要展示了 当前NGINX的总体状态，例如运行机器的 hostname、nginx版本、nginx进程最后一次更新或启动到现在的时间、总体的链接情况、总体的请求情况、和vts所依赖的共享内存的区域状态（vts模块记录的这些指标存储在这里）
+
+  ![nginx-vts-servermain](assets/nginx-vts-servermain)
+
+* Server Zone
+
+  server zone 主要是对每一个 server 配置下面的 请求处理的状态，你可以查看你的每一个nginx server 配置下的请求状态（例如请求响应状态1xx 2xx 3xx 4xx 5xx的情况、流量情况等）
+
+  ![nginx-vts-serverzones](assets/nginx-vts-serverzones)
+
+​		**注意**：没有设置server_name的server vts会以 _ 代理名称，并自动生成具体的状态情况，例如上图的 200，400，都是指没有设置server_name的server请求		响应情况
+
+* Filters
+
+  filters 在官方的样例图中没有具体展示，但是它很重要
+
+* Upstreams
+
+  
+
+* Caches
+
 
 
 ### 高可用
