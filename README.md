@@ -752,7 +752,7 @@ nginx_vts_start_time_seconds 1686053290.672
 
 有一些改动的Nginx Vts Grafana监控大盘
 
-<img src="assets/nginx-vts-grafana" alt="nginx-vts-grafana" style="zoom: 50%;" />
+  <img src="assets/nginx-vts-grafana" alt="nginx-vts-grafana" style="zoom: 50%;" />
 
 
 
@@ -760,7 +760,7 @@ nginx_vts_start_time_seconds 1686053290.672
 
 * 在传统虚机部署中，你可以依赖keepalived做软VIP的主备架构
 
-![nginx-unit2](assets/nginx-unit2)
+  ![nginx-unit2](assets/nginx-unit2)
 
 ​	（有时间补充一下keepalived - 20230607）
 
@@ -768,7 +768,7 @@ nginx_vts_start_time_seconds 1686053290.672
 
 * 或者依赖硬件设备，做负载均衡形成集群
 
-![nginx-unit1](assets/nginx-unit1)
+  ![nginx-unit1](assets/nginx-unit1)
 
 
 
