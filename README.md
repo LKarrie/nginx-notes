@@ -657,7 +657,7 @@ http{
 
   实现效果如下，可以看到filters对应的group为server下的server_name，每个gourp监控的key为具体的httpcode 200、206、301等等
 
-  <img src="assets/nginx-vts-filters" alt="image-20230607085504775" style="zoom: 50%;" />
+  <img src="assets/nginx-vts-filters" alt="nginx-vts-filters" style="zoom: 50%;" />
 
   **vhost_traffic_status_filter_by_set_key 后关于key的设置除了 $status 你也可以设置其他变量，如果设置了其他变量就相当于监控每个server下的这个变量维度的1xx 2xx 3xx 4xx 5xx 出入流量 等状态**
 
