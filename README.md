@@ -559,9 +559,7 @@ stream{
 
 如果你用的是开源社区版本的NGINX，非常推荐使用一下三方模块 [vts](https://github.com/vozlt/nginx-module-vts) 这个真是一个良心的模块 
 
-（除了监控，我发现最近他还支持了主动探测，有时间试一下 - 20230606）
-
-NGINX 构建加入这个模块之后 添加一些vts配置 即可以通过 http的页面（页面访问路径是可以配置 http://ip:port/location） 查看NGINX的很多信息
+NGINX 构建加入这个模块之后 添加一些vts配置 即可以通过 http的http页面（页面访问路径是可以配置 http://ip:port/location）或Prometheus指标 查看NGINX的很多信息
 
 ```nginx
 http{
@@ -601,7 +599,7 @@ http{
 
 引用一下官方的一张图，展示一下vts的监控html页面
 
-![nginx-vts](assets/nginx-vts)
+<img src="assets/nginx-vts" alt="nginx-vts" style="zoom: 80%;" />
 
 详细分析一下这个html展示的内容
 
@@ -609,19 +607,85 @@ http{
 
   server main 主要展示了 当前NGINX的总体状态，例如运行机器的 hostname、nginx版本、nginx进程最后一次更新或启动到现在的时间、总体的链接情况、总体的请求情况、和vts所依赖的共享内存的区域状态（vts模块记录的这些指标存储在这里）
 
-  ![nginx-vts-servermain](assets/nginx-vts-servermain)
+  <img src="assets/nginx-vts-servermain" alt="nginx-vts-servermain" style="zoom:80%;" />
+
+  
 
 * Server Zone
 
   server zone 主要是对每一个 server 配置下面的 请求处理的状态，你可以查看你的每一个nginx server 配置下的请求状态（例如请求响应状态1xx 2xx 3xx 4xx 5xx的情况、流量情况等）
 
-  ![nginx-vts-serverzones](assets/nginx-vts-serverzones)
-
-​		**注意**：没有设置server_name的server vts会以 _ 代理名称，并自动生成具体的状态情况，例如上图的 200，400，都是指没有设置server_name的server请求		响应情况
+  <img src="assets/nginx-vts-serverzones" alt="nginx-vts-serverzones" style="zoom:80%;" />
+  
+  **注意**：没有设置server_name的server vts会以 _ 代替名称，并自动生成具体的请求状态码，例如上图的 200，400，都是指没有设置server_name的server请求响应情况
+  
+  
 
 * Filters
 
-  filters 在官方的样例图中没有具体展示，但是它很重要
+  filters 在官方的样例图中没有具体展示，但是它很重要，主要是通过filter来实现自定监控项
+
+  官方配置中和filters相关的配置如下
+
+  ```nginx
+  http{
+      #...
+      # 开启自定义filter分组监控
+      vhost_traffic_status_filter on;
+      # 按请求状态和配置server_name 分组
+      # 下面vts配置 是设置监控 每个nginx server下的具体请求状态码
+      vhost_traffic_status_filter_by_set_key $status $server_name;
+      #...
+      # 下面配置一些自己的server和vts无关
+      server {
+          #...
+          server_name *.lkarrie.com;
+          #...
+  	}
+      server {
+          #...
+          server_name blog.lkarrie.com;
+          #...
+      }
+      #...
+  }
+  ```
+
+  实现效果如下，可以看到filters对应的group为server下的server_name，每个gourp监控的key为具体的httpcode 200、206、301等等
+
+  <img src="assets/nginx-vts-filters" alt="image-20230607085504775" style="zoom:80%;" />
+
+  **vhost_traffic_status_filter_by_set_key 后关于key的设置除了 $status 你也可以设置其他变量，如果设置了其他变量就相当于监控每个server下的这个变量维度的1xx 2xx 3xx 4xx 5xx 出入流量 等状态**
+
+  举个监控server下具体接口状态的例子，增加一个自定义变量拦截特定的接口
+
+  按照如下的配置，最终filters下的Zone为自定义变量$alerturl
+
+  当然你可以根据实际的需求将map下的正则改成别的，实现特定规则的接口监控
+
+  ```nginx
+  http{
+      #...
+      # 当请求路径包含gateway时 为$alerturl设置为当前请求的uri
+      # 不包含gateway的请求$alerturl统一设置为/not-alarm-request
+      map $uri $alerturl {
+          ~*(gateway) $uri;
+          default '/not-alarm-request';
+      }
+      
+      # 自定义 vts共享内存
+      # 由于我们监控的接口可能一直增长或数量较多 需要适当调整vts共享内存的默认大小
+      # 满了虽然不会影响使用，但是会停止记录新的key
+      vhost_traffic_status_zone shared:vhost_traffic_status:300m;
+      # 开启自定义filter分组监控
+      vhost_traffic_status_filter on;
+      # 按请求状态和配置server_name 分组
+      vhost_traffic_status_filter_by_set_key $alerturl $server_name;
+      #...
+  }
+  ```
+
+  
 
 * Upstreams
 
