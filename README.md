@@ -67,50 +67,13 @@ module_tar 存放 三方模块源码压缩包
 ```terminal
 [root@nginx nginx_build]# pwd
 /app/nginx_build
-[root@nginx nginx_build]# tree -L 2
+[root@nginx nginx_build]# tree -L 1
 .
 ├── module
-│   ├── nginx-module-vts
-│   ├── ngx_dynamic_upstream
-│   ├── ngx_healthcheck_module
-│   ├── ngx_http_proxy_connect_module
-│   └── read-request-body-nginx-module
 ├── module_tar
-│   ├── nginx-module-vts-0.2.1.tar.gz
-│   ├── nginx-rewrite-request-body-module-master.zip
-│   ├── ngx_dynamic_upstream-0.1.6.zip
-│   ├── ngx_healthcheck_module-master.zip
-│   ├── ngx_http_proxy_connect_module-0.0.3.tar.gz
-│   └── read-request-body-nginx-module-master.zip
 ├── nginx-1.18.0
-│   ├── auto
-│   ├── CHANGES
-│   ├── CHANGES.ru
-│   ├── conf
-│   ├── configure
-│   ├── contrib
-│   ├── html
-│   ├── LICENSE
-│   ├── Makefile
-│   ├── man
-│   ├── objs
-│   ├── README
-│   └── src
 ├── nginx-1.18.0.tar.gz
 ├── nginx-1.20.2
-│   ├── auto
-│   ├── CHANGES
-│   ├── CHANGES.ru
-│   ├── conf
-│   ├── configure
-│   ├── contrib
-│   ├── html
-│   ├── LICENSE
-│   ├── Makefile
-│   ├── man
-│   ├── objs
-│   ├── README
-│   └── src
 └── nginx-1.20.2.tar.gz
 ```
 
@@ -212,32 +175,13 @@ script 存放keepalived探活脚本 或 一些定时任务脚本
 ├── client_body_temp
 ├── conf
 │   ├── cert
-│   ├── conf.d
-│   ├── fastcgi.conf
-│   ├── fastcgi.conf.default
-│   ├── fastcgi_params
-│   ├── fastcgi_params.default
-│   ├── koi-utf
-│   ├── koi-win
-│   ├── mime.types
-│   ├── mime.types.default
-│   ├── nginx.conf
-│   ├── nginx.conf.default
-│   ├── scgi_params
-│   ├── scgi_params.default
-│   ├── uwsgi_params
-│   ├── uwsgi_params.default
-│   └── win-utf
+│   └── conf.d
 ├── fastcgi_temp
 ├── html
-│   ├── 50x.html
-│   └── index.html
 ├── logs
-│   ├── error.log
 │   └── nginx.pid
 ├── proxy_temp
 ├── sbin
-│   └── nginx
 ├── scgi_temp
 ├── script
 └── uwsgi_temp
@@ -310,9 +254,6 @@ nginx  nginx.commonbk  nginx.hpcbk  nginx.old
 [nginx@lkarrie sbin]$ ps -ef | grep nginx
 nginx   69168      1  0 04:26 ?        00:00:00 nginx: master process ../sbin/nginx
 nginx   76801  69168  0 05:11 ?        00:00:00 nginx: worker process
-nginx   76802  69168  0 05:11 ?        00:00:00 nginx: worker process
-nginx   76803  69168  0 05:11 ?        00:00:00 nginx: worker process
-nginx   76804  69168  0 05:11 ?        00:00:00 nginx: worker process
 nginx   76866  53248  0 05:12 pts/1    00:00:00 grep --color=auto nginx           
 
 # 新nginx二进制文件 覆盖旧nginx二进制文件
@@ -326,17 +267,11 @@ total 31940
 drwxrwxr-x.  2 nginx nginx      77 Nov  7 05:13 .
 drwxrwxr-x. 11 nginx nginx     151 Jul 13 19:43 ..
 -rwxrwxr-x   1 nginx nginx 8212232 Nov  7 04:56 nginx
--rwxr-xr-x   1 nginx nginx 8087592 Oct 24 21:59 nginx.commonbk
--rwxr-xr-x   1 nginx nginx 8188856 Oct 24 22:00 nginx.hpcbk
--rwxrwxr-x   1 nginx nginx 8209384 Nov  7 05:03 nginx.old
 
 # 没有执行新二进制文件 所以进程pid无变化
 [nginx@lkarrie sbin]$ ps -ef | grep nginx
 nginx   69168      1  0 04:26 ?        00:00:00 nginx: master process ../sbin/nginx
 nginx   76801  69168  0 05:11 ?        00:00:00 nginx: worker process
-nginx   76802  69168  0 05:11 ?        00:00:00 nginx: worker process
-nginx   76803  69168  0 05:11 ?        00:00:00 nginx: worker process
-nginx   76804  69168  0 05:11 ?        00:00:00 nginx: worker process
 nginx   76959  53248  0 05:13 pts/1    00:00:00 grep --color=auto nginx
 
 # 执行升级nginx二进制文件 USR2信号
@@ -348,14 +283,8 @@ nginx   76959  53248  0 05:13 pts/1    00:00:00 grep --color=auto nginx
 [nginx@lkarrie sbin]$ ps -ef | grep nginx
 nginx   69168      1  0 04:26 ?        00:00:00 nginx: master process ../sbin/nginx
 nginx   76801  69168  0 05:11 ?        00:00:00 nginx: worker process
-nginx   76802  69168  0 05:11 ?        00:00:00 nginx: worker process
-nginx   76803  69168  0 05:11 ?        00:00:00 nginx: worker process
-nginx   76804  69168  0 05:11 ?        00:00:00 nginx: worker process
 nginx   77179  69168  0 05:16 ?        00:00:00 nginx: master process ../sbin/nginx
 nginx   77180  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77181  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77182  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77183  77179  0 05:16 ?        00:00:00 nginx: worker process
 nginx   77192  53248  0 05:16 pts/1    00:00:00 grep --color=auto nginx
 
 # 优雅关闭旧nginx工作进程
@@ -369,9 +298,6 @@ nginx   77192  53248  0 05:16 pts/1    00:00:00 grep --color=auto nginx
 nginx   69168      1  0 04:26 ?        00:00:00 nginx: master process ../sbin/nginx
 nginx   77179  69168  0 05:16 ?        00:00:00 nginx: master process ../sbin/nginx
 nginx   77180  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77181  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77182  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77183  77179  0 05:16 ?        00:00:00 nginx: worker process
 nginx   77413  53248  0 05:18 pts/1    00:00:00 grep --color=auto nginx
 
 # 验证更新 nginx_upstream_check_module去除 新增ngx_dynamic_upstream
@@ -408,9 +334,6 @@ configure arguments: --prefix=/app/nginx --with-compat --with-file-aio --with-th
 nginx   69168      1  0 04:26 ?        00:00:00 nginx: master process ../sbin/nginx
 nginx   77179  69168  0 05:16 ?        00:00:00 nginx: master process ../sbin/nginx
 nginx   77180  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77181  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77182  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77183  77179  0 05:16 ?        00:00:00 nginx: worker process
 nginx   78267  53248  0 05:28 pts/1    00:00:00 grep --color=auto nginx
 
 # 唤醒旧nginx master进程 执行旧nginx二进制执行文件
@@ -421,13 +344,7 @@ nginx   78267  53248  0 05:28 pts/1    00:00:00 grep --color=auto nginx
 nginx   69168      1  0 04:26 ?        00:00:00 nginx: master process ../sbin/nginx
 nginx   77179  69168  0 05:16 ?        00:00:00 nginx: master process ../sbin/nginx
 nginx   77180  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77181  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77182  77179  0 05:16 ?        00:00:00 nginx: worker process
-nginx   77183  77179  0 05:16 ?        00:00:00 nginx: worker process
 nginx   78336  69168  0 05:29 ?        00:00:00 nginx: worker process
-nginx   78337  69168  0 05:29 ?        00:00:00 nginx: worker process
-nginx   78338  69168  0 05:29 ?        00:00:00 nginx: worker process
-nginx   78339  69168  0 05:29 ?        00:00:00 nginx: worker process
 nginx   78345  53248  0 05:29 pts/1    00:00:00 grep --color=auto nginx
 
 # 优雅关闭问题nginx主进程和工作进程
@@ -437,9 +354,6 @@ nginx   78345  53248  0 05:29 pts/1    00:00:00 grep --color=auto nginx
 [nginx@lkarrie sbin]$ ps -ef | grep nginx
 nginx   69168      1  0 04:26 ?        00:00:00 nginx: master process ../sbin/nginx
 nginx   78336  69168  0 05:29 ?        00:00:00 nginx: worker process
-nginx   78337  69168  0 05:29 ?        00:00:00 nginx: worker process
-nginx   78338  69168  0 05:29 ?        00:00:00 nginx: worker process
-nginx   78339  69168  0 05:29 ?        00:00:00 nginx: worker process
 nginx   78562  53248  0 05:32 pts/1    00:00:00 grep --color=auto nginx
 
 # 验证
@@ -541,6 +455,52 @@ stream{
 
 ```shell
 0 0 * * * /usr/sbin/logrotate -f /app/logs/nginx/nginx-logrotate-conf >/dev/null 2>&1
+```
+
+
+
+### 日志分析
+
+日志分析相关，还是最好收拢到ES里，方便检索
+
+下面补充一些小工具分析
+
+goaccess分析日志 [整好之后的效果]([服务器统计信息 (lkarrie.com)](http://goaccess.lkarrie.com/goaccess/))
+
+```markdown
+# 离线ip库
+yum install -y GeoIP-devel --downloadonly --downloaddir=./
+yum install GeoIP-1.5.0-14.el7.x86_64.rpm GeoIP-devel-1.5.0-14.el7.x86_64.rpm geoipupdate-2.5.0-1.el7.x86_64.rpm -y
+
+# 安装goaccess
+wget https://tar.goaccess.io/goaccess-1.7.2.tar.gz
+tar -xzvf goaccess-1.7.2.tar.gz
+cd goaccess-1.7.2
+./configure --enable-utf8 --enable-geoip=legacy --with-getline --with-openssl
+make
+make install
+
+# 配置
+vim /usr/local/etc/goaccess/goaccess.conf
+# 增加配置
+time-format %T
+date-format %Y-%m-%d
+log-format [%dT%t+%^] %^ %h:%^ "%H %m %^ %v %U" %s %b %T %^ "%R" "%u" "~h{,}"  %^ %^ %^
+
+# 注意这里需要根据自己的 nginx logformat进行配置
+# 参考官方文档 https://goaccess.io/man#custom-log
+# 上面配置对应的 log_format
+log_format  access  '[$time_iso8601] $remote_user $remote_addr:$remote_port "$server_protocol $request_method $scheme $http_host $uri" '
+'$status $body_bytes_sent $request_time $request_length "$http_referer" '
+'"$http_user_agent" "$http_x_forwarded_for" '
+'"$upstream_addr" $upstream_status $upstream_response_time';
+##### 
+
+# 跑一下生成html
+# 可以写脚本放到后台跑
+# nginx加一下配置就能实时访问这个资源了
+# 注意开放 websocket 7890端口
+goaccess /app/logs/nginx/access.log -o /app/nginx/html/goaccess/index.html --real-time-html
 ```
 
 
