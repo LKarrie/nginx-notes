@@ -617,7 +617,7 @@ http{
 
   实现效果如下，可以看到filters对应的group为server下的server_name，每个gourp监控的key为具体的httpcode 200、206、301等等
 
-  <img src="assets/nginx-vts-filters" alt="image-20230607085504775" style="zoom: 50%;" />
+  <img src="assets/nginx-vts-filters" alt="nginx-vts-filters" style="zoom: 50%;" />
 
   **vhost_traffic_status_filter_by_set_key 后关于key的设置除了 $status 你也可以设置其他变量，如果设置了其他变量就相当于监控每个server下的这个变量维度的1xx 2xx 3xx 4xx 5xx 出入流量 等状态**
 
@@ -712,7 +712,7 @@ nginx_vts_start_time_seconds 1686053290.672
 
 有一些改动的Nginx Vts Grafana监控大盘
 
-<img src="assets/nginx-vts-grafana" alt="nginx-vts-grafana" style="zoom: 50%;" />
+  <img src="assets/nginx-vts-grafana" alt="nginx-vts-grafana" style="zoom: 50%;" />
 
 
 
@@ -720,7 +720,7 @@ nginx_vts_start_time_seconds 1686053290.672
 
 * 在传统虚机部署中，你可以依赖keepalived做软VIP的主备架构
 
-![nginx-unit2](assets/nginx-unit2)
+  ![nginx-unit2](assets/nginx-unit2)
 
 ​	（有时间补充一下keepalived - 20230607）
 
@@ -728,7 +728,7 @@ nginx_vts_start_time_seconds 1686053290.672
 
 * 或者依赖硬件设备，做负载均衡形成集群
 
-![nginx-unit1](assets/nginx-unit1)
+  ![nginx-unit1](assets/nginx-unit1)
 
 
 
