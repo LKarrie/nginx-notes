@@ -8,22 +8,47 @@
   * [运维](#运维)
     * [热升级/重启](#热升级重启)
     * [日志管理](#日志管理)
+    * [日志分析](#日志分析)
+    * [日志清理](#日志清理)
     * [开机自启](#开机自启)
     * [监控](#监控)
+      * [Vhost\_traffic](#vhost_traffic)
+      * [Vhost\_traffic Prometheus](#vhost_traffic-prometheus)
+      * [Vhost\_traffic Control](#vhost_traffic-control)
     * [高可用](#高可用)
-  * [常用技巧和配置](#常用技巧和配置)
+      * [Keepalived](#keepalived)
+  * [常用配置](#常用配置)
+    * [长链接](#长链接)
+      * [HTTP 长链接](#http-长链接)
+      * [STREAM 长链接](#stream-长链接)
+    * [反向代理](#反向代理)
+      * [HTTP反向代理](#http反向代理)
+      * [HTTPS反向代理](#https反向代理)
+      * [NGINX域名处理](#nginx域名处理)
+    * [正向代理](#正向代理)
+    * [静态缓存](#静态缓存)
+    * [逻辑判断](#逻辑判断)
+    * [安全配置](#安全配置)
+  * [常见的状态码问题分析](#常见的状态码问题分析)
+    * [101](#101)
+    * [400](#400)
+    * [408](#408)
+    * [413](#413)
+    * [499](#499)
+    * [502](#502)
+    * [504](#504)
 
 
 
 ## 安装
 
-> 记录一些常用的安装步骤
+> 记录一些NGINX常用的安装步骤
 
 
 
-实践使用的版本（社区） 1.18.0 1.20.2
+NGINX版本（社区） 1.18.0 1.20.2
 
-比较推荐的三方模块
+推荐的三方模块
 
 * [vts-用于监控NGINX流量和状态](https://github.com/vozlt/nginx-module-vts)
 
@@ -44,7 +69,7 @@ yum -y install openssl openssl-devel
 
 **注意**：openssl 版本 和TLS 版本有关
 
-如果你的nginx需要支持 TLSv1.3 openssl需要使用较新的版本（利例如 1.1.1g）
+如果你的nginx需要支持 TLSv1.3 openssl需要使用较新的版本（例如 1.1.1g）
 
 
 
@@ -54,11 +79,9 @@ yum -y install openssl openssl-devel
 
 如有需要的三方模块 前往对应 github页面下载 
 
-如有需要，下载相关社区模组源码包
 
 
-
-个人比较喜欢的NGINX编译目录
+推荐的NGINX编译目录
 
 module 存放 三方模块源码
 
@@ -161,7 +184,7 @@ configure arguments: --prefix=/app/nginx --with-compat --with-file-aio --with-th
 
 
 
-个人比较喜欢的NGINX安装目录
+推荐的NGINX安装目录
 
 conf/cert 存放证书
 
@@ -197,13 +220,10 @@ script 存放keepalived探活脚本 或 一些定时任务脚本
 
 ### 热升级/重启
 
-热升级或者重启的使用场景：
+热升级或者热重启的使用场景：
 
-* NGINX版本升级（替换可执行文件）时，保证流量的同时进行升级
-
-* 在**开源社区版本**中NGINX会对本地DNS进行缓存，没有配置resolver的server，在虚机DNS切换后，NGINX并不会切换，旧的DNS不可用则会影响当前请求解析，需要将NGINX进程重启，重新缓存本地DNS配置（reload无效）
-
-**注**：七层代理可以通过配置 resolver 加set 变量的形式保证代理域名的实际地址最新，而四层代理如果涉及代理地址为域名，虚机DNS切换，必须要重启NGINX
+* NGINX版本升级（替换可执行文件），保证流量的同时进行升级
+* 在**开源社区版本**中NGINX会对本地DNS进行缓存，resolver配置未生效的情况下，只能热重启NGINX获取域名对应的最新IP
 
 热升级具体操作如下
 
@@ -216,6 +236,7 @@ cp -f nginx nginx.old
 cp -f /app/nginx_build/nginx-1.20.2/objs/nginx .
 
 # 执行升级和优雅关闭旧worker进程
+# 69168 为NGINX的master进程号
 kill -USR2 69168  
 kill -WINCH 69168
         
@@ -375,7 +396,7 @@ configure arguments: --prefix=/app/nginx --with-compat --with-file-aio --with-th
 
 而且NGINX日志格式需要有一些要求，方便排查线上问题
 
-个人比较喜欢的日志格式和目录
+推荐的日志文件名和路径
 
 * access日志（七层）：/app/logs/nginx/access-$server_name-$server_port-$logdate.log
 
@@ -425,7 +446,7 @@ stream{
 
 
 
-当然NGINX的日志切割也可以使用logrotate，下面是具体方法（个人觉得直接使用配置实现日志切割较为方便
+当然NGINX的日志切割也可以使用logrotate，下面是具体方法（直接使用配置实现日志切割较为方便
 
 使用logrotate工具切割，crontab定时每天0点切割access.log和error.log，保存每天0-24时nginx日志
 
@@ -505,6 +526,29 @@ goaccess /app/logs/nginx/access.log -o /app/nginx/html/goaccess/index.html --rea
 
 
 
+### 日志清理
+
+按天切割NGINX日志后，产生的日志文件时间久了会堆积很多，需要清理日志文件
+
+删除7天前的access log 
+
+创建清理日志脚本 nginx_access_log_clean.sh
+
+```shell
+#!/bin/bash
+find /app/logs/nginx/ -mtime +6 -name "access-*.log" -exec rm -f {} \;
+```
+
+
+
+执行命令 crontab -e 创建定时任务
+
+```shell
+@daily /app/nginx/script/nginx_access_log_clean.sh
+```
+
+
+
 ### 开机自启
 
 利用crontab
@@ -519,11 +563,11 @@ goaccess /app/logs/nginx/access.log -o /app/nginx/html/goaccess/index.html --rea
 
 ### 监控
 
-社区版本的NGINX监控手段其实不多，开源可用的module [ngx_http_stub_status_module](https://nginx.org/en/docs/http/ngx_http_stub_status_module.html) 展示的内容也太少了
+社区版本的NGINX监控手段其实不多，可用的module [ngx_http_stub_status_module](https://nginx.org/en/docs/http/ngx_http_stub_status_module.html) 展示的内容也太少了
 
 如果你用的是开源社区版本的NGINX，非常推荐使用一下三方模块 [vts](https://github.com/vozlt/nginx-module-vts) 这个真是一个良心的模块 
 
-NGINX 构建加入这个模块之后 添加一些vts配置 即可以通过 http的http页面（页面访问路径是可以配置 http://ip:port/location）或Prometheus指标 查看NGINX的很多信息
+NGINX 构建加入这个模块之后 添加一些vts配置 即可以通过 Web页面或Prometheus指标 查看NGINX的很多信息
 
 ```nginx
 http{
@@ -543,6 +587,8 @@ http{
          # 访问 vts 监控的路径
          location /status {
            access_log off;
+           # 不记录当前location的请求信息
+           vhost_traffic_status_bypass_stats on;
            # 允许自身访问 例如 curl测试
            allow 127.0.0.1;
            # allow prometheus ip
@@ -560,6 +606,8 @@ http{
 ```
 
 
+
+#### Vhost_traffic
 
 引用一下官方的一张图，展示一下vts的监控html页面
 
@@ -580,9 +628,15 @@ http{
   server zone 主要是对每一个 server 配置下面的 请求处理的状态，你可以查看你的每一个nginx server 配置下的请求状态（例如请求响应状态1xx 2xx 3xx 4xx 5xx的情况、流量情况等）
 
   <img src="assets/nginx-vts-serverzones" alt="nginx-vts-serverzones" style="zoom: 50%;" />
-  
-  **注意**：没有设置server_name的server vts会以 _ 代替名称，并自动生成具体的请求状态码，例如上图的 200，400，都是指没有设置server_name的server请求响应情况
-  
+
+  **注意**：如果没有设置server_name的server server_name 会缺省为 "_" ；
+
+  如果 vhost_traffic_status_filter_by_set_key 第一个 第二个 参数分别为 $status $server_name ；
+
+  由于第二个参数为空 Server Zone会以第一个参数生成Zone ；
+
+  例如上图的 200，400，都是由于存在server_name为空的server，自动设置了对应状态码的Zone，并展示了相关的请求数据；
+
   
 
 * Filters
@@ -619,13 +673,13 @@ http{
 
   <img src="assets/nginx-vts-filters" alt="nginx-vts-filters" style="zoom: 50%;" />
 
-  **vhost_traffic_status_filter_by_set_key 后关于key的设置除了 $status 你也可以设置其他变量，如果设置了其他变量就相当于监控每个server下的这个变量维度的1xx 2xx 3xx 4xx 5xx 出入流量 等状态**
+  **vhost_traffic_status_filter_by_set_key 后关于key的设置除了 $status 也可以设置其他变量，如果设置了其他变量就相当于监控每个server下的这个变量维度的1xx 2xx 3xx 4xx 5xx 出入流量 等状态**
 
   举个监控server下具体接口状态的例子，增加一个自定义变量捕获特定的接口
 
   按照如下的配置，最终filters下的Zone为自定义变量$alerturl
 
-  当然你可以根据实际的需求将map下的正则改成别的，实现特定规则的接口监控
+  当然你可以根据实际的需求将map下的正则规则进行修改，实现特定规则的接口监控
 
   ```nginx
   http{
@@ -694,6 +748,8 @@ http{
 
 
 
+#### Vhost_traffic Prometheus
+
 
 当然除了使用html方式你通过http的形式获取vts的Prometheus指标
 
@@ -716,23 +772,201 @@ nginx_vts_start_time_seconds 1686053290.672
 
 
 
+#### Vhost_traffic Control
+
+vts模块除了可以展示NGINX状态，还支持一些http接口形式的动态控制，下面是一些个人常用的控制接口，详细可以参考官方Github Readme的介绍
+
+```markdown
+# 注意 curl的地址 必须使用单引号括起来 否则无法正常生效
+
+# 删除所有zone重新计数
+curl 'http://127.0.0.1:9913/status/control?cmd=delete&group=*'
+
+# 获取Main zone
+curl 'http://127.0.0.1:9913/status/control?cmd=status&group=server&zone=::main'
+```
+
+
+
 ### 高可用
 
 * 在传统虚机部署中，你可以依赖keepalived做软VIP的主备架构
 
   ![nginx-unit2](assets/nginx-unit2)
 
-​	（有时间补充一下keepalived - 20230607）
 
 
-
-* 或者依赖硬件设备，做负载均衡形成集群
+* 或者依赖硬件设备（F5等），做负载均衡形成集群
 
   ![nginx-unit1](assets/nginx-unit1)
 
 
 
 * 再者就是上云依赖平台底座例如K8S等，提供容错、自愈、和横向扩展的功能
+
+
+
+#### Keepalived
+
+简单补充一下 Keepalived 的安装方法
+
+```markdown
+# yum安装
+yum -y install keepalived
+
+# 查看安装路径
+rpm -ql keepalived
+
+# 备份默认配置
+cd /etc/keepalived
+mv keepalived.conf  keepalived.conf.default 
+```
+
+测试部署主备节点：192.168.202.129，192.168.202.130 ；VIP：192.168.202.130
+
+编辑 192.168.202.129  keepalived.conf 配置 
+
+``` keepalived.conf
+global_defs { 
+    # 全局唯一的主机标识,主备机使用不用的标识 
+    router_id server_a 
+    script_user root
+    enable_script_security
+} 
+
+vrrp_script check_app {
+    script "/etc/keepalived/nginx_check.sh"
+    interval 3
+}
+vrrp_instance VI_1 { 
+    state BACKUP 
+    # 绑定的网卡  
+    interface ens33 
+    # 虚拟路由id，保证主备节点是一致的  
+    virtual_router_id 51 
+    # 权重  
+    priority 100 
+    # 同步检查时间，间隔默认1秒  
+    advert_int 1
+    # 非抢占模式
+    nopreempt
+    # 本机地址
+    unicast_src_ip 192.168.202.129 
+    unicast_peer { 
+        # 备机地址
+        192.168.202.130
+    } 
+    # 认证授权的密码，所有主备需要一样  
+    authentication { 
+        auth_type PASS 
+        auth_pass 1111 
+    }
+    
+    track_script {
+        check_app
+    } 
+    virtual_ipaddress { 
+        # VIP
+        192.168.202.131 
+    } 
+} 
+```
+
+编辑 192.168.202.130  keepalived.conf 配置 
+
+```keepalived.conf
+global_defs { 
+    # 全局唯一的主机标识,主备机使用不用的标识 
+    router_id server_a 
+    script_user root
+    enable_script_security
+} 
+
+vrrp_script check_app {
+    script "/etc/keepalived/nginx_check.sh"
+    interval 3
+}
+vrrp_instance VI_1 { 
+    state BACKUP 
+    # 绑定的网卡  
+    interface ens33 
+    # 虚拟路由id，保证主备节点是一致的  
+    virtual_router_id 51 
+    # 权重  
+    priority 100 
+    # 同步检查时间，间隔默认1秒  
+    advert_int 1
+    # 非抢占模式
+    nopreempt
+    # 本机地址
+    unicast_src_ip 192.168.202.130 
+    unicast_peer { 
+        # 备机地址
+        192.168.202.129
+    } 
+    # 认证授权的密码，所有主备需要一样  
+    authentication { 
+        auth_type PASS 
+        auth_pass 1111 
+    }
+    
+    track_script {
+        check_app
+    } 
+    virtual_ipaddress { 
+        # VIP
+        192.168.202.131 
+    } 
+} 
+```
+
+两测试机 /etc/keepalived 目录下分别创建 nginx_check.sh
+
+```shell
+#!/bin/bash
+# 检测NGINX进程
+A=`ps -C nginx --no-header | wc -l`
+# 没有探测到NGINX进程
+if [ $A -eq 0 ];then
+    # 可以先尝试拉起NGINX
+    # su - nginx -c "/app/nginx/sbin/nginx"
+    # sleep 3
+    # if [ `ps -C nginx --no-header | wc -l` -eq 0 ];then
+    #     killall keepalived
+    # fi
+    
+    # 或者直接停止keepalived
+    systemctl stop keepalived   
+fi
+```
+
+**为nginx_check.sh脚本赋权**，这一步非常重要脚本权限不对会影响keepalived执行脚本进行VIP漂移
+
+```shell
+chmod 700 nginx_check.sh
+```
+
+分别启动keepalived，亲测无问题，停止nginx进程VIP可以进行漂移
+
+```shell
+systemctl restart keepalived
+```
+
+测试记录~
+
+主节点 192.168.202.130
+
+![image-nginx-keepalived-130](assets/nginx-keepalived-130)
+
+备节点 192.168.202.129
+
+![image-nginx-keepalived-129](assets/nginx-keepalived-129)
+
+**注意**：
+
+实际使用中，按上述测试的方法，宕机机器再重启后 keepalived 不会自动启动，需要手动拉起
+
+当然你也可以做一些脚本，让 keepalived 也自动启动
 
 
 
@@ -748,7 +982,7 @@ nginx_vts_start_time_seconds 1686053290.672
 
 在NGINX 七层代理中使用长链接（复用TCP通道）
 
-实际生产中 keepalive 设置的值需要慎重，而且这个值是单独制定一个worker进程，实际的keepalive数需要和worker进程相乘，推荐根据实际业务的tps推算到每个worker进程的keepalive链接数并做微上调，保证需求避免keepalive设置值不合理
+实际生产中 keepalive 设置的值需要慎重，而且这个值是单独指定一个worker进程，实际的keepalive数需要和worker进程相乘，推荐根据实际业务的tps推算到每个worker进程的keepalive链接数并做微上调，保证需求避免keepalive设置值不合理
 
 ```nginx
 http{
@@ -796,7 +1030,7 @@ stream {
     }
     
     server {
-        listen 2001;
+        listen 2001 so_keepalive=on;
         proxy_pass test;
     }
     #...
@@ -827,11 +1061,11 @@ HTTP的反向代理并不困难，不论对内或对外都是配置proxy_pass即
 
 下面的一些配置仅针对**NGINX社区版本**，商业版本的NGINX Plus对上面的一些实际问题都有很好的解决方案（并不是所有老板都有钱支持采购商业版本~
 
-在默认的情况下，如果你的配置文件里 proxy_pass 存在域名，而且并没有配置resolver，nginx只会在首次启动时（进程完全退出后启动）将域名对应的实际地址缓存到内存中，这个时候如果域名对应的实际地址变化之后，nginx其实是探测不到的
+默认如果你的配置文件里 proxy_pass 存在域名，而且resolver未生效的情况下，nginx只会在首次启动时（进程完全退出后启动）将域名对应的实际地址缓存到内存中，这个时候如果域名对应的实际地址变化之后，nginx其实是探测不到的
 
 **在官方文档中，上述的情况是可以通过配置 resolver的 valid 参数来设置域名对应实际IP的时间，但在我工作当中用到的 1.18.0 1.20.2 NGINX这个参数并不能生效**...
 
-最后我们通过变量设置域名的方式，保证每次请求都是去访问DNS服务器获取域名对应的IP，下面是一些参考配置
+最后我通过变量设置域名的方式，保证了域名对应实际IP的新鲜度，下面是一些参考配置
 
 ```nginx
 http {
@@ -890,7 +1124,105 @@ http {
 
 
 
+####	NGINX域名处理
+
+在反向代理中提了一些域名解析的问题，下面主要记录一下NGINX域名的处理逻辑
+
+**测试版本 1.20.2**
+
+```nginx
+server {
+	listen 9001;
+	resolver 192.168.202.129 valid=180s ipv6=off;
+	set $test test.cs107.net;
+	location / {
+
+		# proxy_pass http://test.cs107.net;
+		# proxy_set_header Host test.cs107.net;
+
+		# 当前server resolver 配置正常生效
+		# 可以正常启动 启动时不会获取并缓存变量域名对应的IP
+		# 第一次请求时 请求resolver获取变量域名对应IP
+		# valid 时间后 域名缓存IP失效 重新请求resolver获取域名地址
+		proxy_pass http://$test;
+		proxy_set_header Host $test;
+	}
+}
+
+server {
+	listen 9001;
+	resolver 192.168.202.129 valid=180s ipv6=off;
+	#set $test test.cs107.net;
+	location / {
+
+		# 当前server resolver 配置失效
+		# 虽然配置了resolver 但是实际并没有 通过resolver去获取域名对应IP
+		# 通过 /etc/resolver.conf 下的nameserver获取域名对应的IP 
+		# 并且一直缓存在NGINX中不会更新 
+		proxy_pass http://test.cs107.net;
+		proxy_set_header Host test.cs107.net;
+
+		#proxy_pass http://$test;
+		#proxy_set_header Host $test;
+	}
+}
+```
+
+
+
 ### 正向代理
+
+这里正向代理主要记录阿里的三方模块 [ngx_http_proxy_connect_module](https://github.com/chobits/ngx_http_proxy_connect_module) https的正向代理
+
+```nginx
+server {
+    listen 8081;
+
+    # dns resolver used by forward proxying
+    resolver 192.168.202.2 ipv6=off;
+    
+    # forward proxy for CONNECT requests
+    proxy_connect;
+    proxy_connect_allow 443;
+    # Defines a timeout for establishing a connection with a proxied server
+    proxy_connect_connect_timeout 8s;
+    # Sets the timeout between two successive read or write operations on client or proxied server connections. If no data is transmitted within this time, the connection is closed
+    proxy_connect_read_timeout 8s;
+    # Deprecated
+    proxy_connect_send_timeout 8s;
+    
+    # set cert
+    # ssl_prefer_server_ciphers on;
+	# ssl_session_timeout 8m;
+    # ssl_certificate your crt;
+    # ssl_certificate_key your key;
+    # ssl_protocols TLSv1.2 TLSv1.3;
+    # ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-CHACHA20-POLY1305;
+    
+    # defined by yourself for non-CONNECT requests
+    # Example: reverse proxy for non-CONNECT requests
+    location / {
+        proxy_pass $scheme://$host$request_uri;
+        proxy_buffers 256 4k;
+        proxy_max_temp_file_size 0k;
+        proxy_connect_timeout 30;
+        proxy_send_timeout 60;
+        proxy_read_timeout 60;
+        proxy_next_upstream error timeout invalid_header http_502;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+**注意**：
+
+增加了正向代理功能，在NGINX上抓包观察链路时
+
+通道在  proxy_connect_read_timeout 设置的时间后发起RST拆链，看起来发起RST可能有问题，实际上这是正常的（官方文档中有相关配置的含义）
+
+
 
 ### 静态缓存
 
