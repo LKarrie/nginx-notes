@@ -33,7 +33,7 @@
     * [101](#101)
     * [400](#400)
     * [408](#408)
-    * [413](#413)
+    * [412](#412)
     * [499](#499)
     * [502](#502)
     * [504](#504)
@@ -1226,9 +1226,114 @@ server {
 
 ### 静态缓存
 
+Nginx中设置静态资源缓存有两种方法
+
+* expires 10m;
+  * 效果：自动生成 Cache-Control HTTP头
+* add_header Cache-Control max-age=7776000;
+  * 效果：添加 Cache-Control HTTP头，优先级比expires
+
+建议只使用一种方式设置静态资源缓存
+
+
+
+禁用前端缓存
+
+* add_header Cache-Control no-cache;
+
+
+
+**注意**：前端单页面应用，不能缓存 index.html
+
+参考配置，只缓存某个目录下固定后缀的前端资源
+
+```nginx
+server{
+    # ...
+    location ~ \/web\/(dir1|dir2|dir3)\/.*\.(css|js|jpg|jpeg|gif|ico|png|bmp|pdf|tiff|svg|apk) {
+    	add_header Cache-Control max-age=7776000;
+        root html;
+        index index.html index.htm;
+    }
+	# ...
+}
+```
+
+
+
 ### 逻辑判断
 
+记录一些NGINX中 if、and、or的配置写法
+
+需要进行多个条件判断，或满足若干项条件的写法
+
+```nginx
+server {
+    # ...
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        set $flag 0;
+        # 需要注意 if 和 括号之间的空格
+        if ($request_method = "POST") {
+            set $flag "${flag}1";
+        }
+        if ($request_uri ~ "Export") {
+            set $flag "${flag}2";
+        }
+        # 根据不同的 if 规则拼接 flag变量 最后根据flag变量的值决定后续操作
+        if ($flag = "012") {
+            return 403;
+        }
+    }
+    # ...   
+}
+```
+
+
+
 ### 安全配置
+
+记录一些安全配置
+
+避免点劫持漏洞（X-Frame-Options）
+
+*  add_header X-Frame-Options SAMEORIGIN;
+  * 效果：同源域名才可以进行调用和iframe嵌入
+
+对抗协议降级和Cookie劫持攻击
+
+* add_header Strict-Transport-Security "max-age=63072000; includeSubdomains; preload;"
+  * max-age：设置浏览器收到请求后多少秒内凡是访问这个域名必须使用HTTPS
+  * includeSubdomains：可选，当前规则使用所有子域名
+  * preload：可选，加入预加载列表
+
+
+
+### 其他配置
+
+#### location 失效
+
+``` nginx	
+server {
+    # ...
+    set $test www.test.com
+    
+    # 当 proxy_pass 包含变量时 location 替换请求路径的功能会失效
+    # 例如请求路径为 /test/api/xxx  期望NGINX处理后 转发路径为 /api/xxx 
+    # 如下的配置就不能实现    
+    #location /test/ {
+    #	proxy_pass https://$test;
+    #    proxy_set_header Host $test;
+    #}    
+        
+    # 使用正则处理这种情况
+    location ~ /test/(.*) {
+    	proxy_pass https://$test/$1;
+        proxy_set_header Host $test;
+    }
+    # ...
+}
+```
 
 
 
@@ -1240,7 +1345,7 @@ server {
 
 ### 408
 
-### 413
+### 412
 
 ### 499
 
