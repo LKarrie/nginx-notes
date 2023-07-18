@@ -25,18 +25,17 @@
       * [HTTP反向代理](#http反向代理)
       * [HTTPS反向代理](#https反向代理)
       * [NGINX域名处理](#nginx域名处理)
+    * [请求缓冲](#请求缓冲)
+    * [代理缓冲](#代理缓冲)
     * [正向代理](#正向代理)
     * [静态缓存](#静态缓存)
     * [逻辑判断](#逻辑判断)
     * [安全配置](#安全配置)
+    * [其他配置](#其他配置)
+      * [location 失效](#location-失效)
   * [常见的状态码问题分析](#常见的状态码问题分析)
     * [101](#101)
     * [400](#400)
-    * [408](#408)
-    * [412](#412)
-    * [499](#499)
-    * [502](#502)
-    * [504](#504)
 
 
 
@@ -73,6 +72,10 @@ yum -y install openssl openssl-devel
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ### 准备源码包
 
 从官网下载对应版本 [nginx: download](https://nginx.org/en/download.html)
@@ -99,6 +102,10 @@ module_tar 存放 三方模块源码压缩包
 ├── nginx-1.20.2
 └── nginx-1.20.2.tar.gz
 ```
+
+
+
+[Back To Toc](#nginx-notes)
 
 
 
@@ -209,6 +216,10 @@ script 存放keepalived探活脚本 或 一些定时任务脚本
 ├── script
 └── uwsgi_temp
 ```
+
+
+
+[Back To Toc](#nginx-notes)
 
 
 
@@ -390,6 +401,10 @@ configure arguments: --prefix=/app/nginx --with-compat --with-file-aio --with-th
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ### 日志管理
 
 生产实践中，NGINX日志需要固定目录，供filebeat（或其他日志全家桶）抓取灌入可视化页面（例如kibana）中展示
@@ -480,6 +495,10 @@ stream{
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ### 日志分析
 
 日志分析相关，还是最好收拢到ES里，方便检索
@@ -526,6 +545,10 @@ goaccess /app/logs/nginx/access.log -o /app/nginx/html/goaccess/index.html --rea
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ### 日志清理
 
 按天切割NGINX日志后，产生的日志文件时间久了会堆积很多，需要清理日志文件
@@ -549,6 +572,10 @@ find /app/logs/nginx/ -mtime +6 -name "access-*.log" -exec rm -f {} \;
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ### 开机自启
 
 利用crontab
@@ -558,6 +585,10 @@ find /app/logs/nginx/ -mtime +6 -name "access-*.log" -exec rm -f {} \;
 ```shell
 @reboot /app/nginx/sbin/nginx
 ```
+
+
+
+[Back To Toc](#nginx-notes)
 
 
 
@@ -788,6 +819,10 @@ curl 'http://127.0.0.1:9913/status/control?cmd=status&group=server&zone=::main'
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ### 高可用
 
 * 在传统虚机部署中，你可以依赖keepalived做软VIP的主备架构
@@ -970,6 +1005,10 @@ systemctl restart keepalived
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ## 常用配置
 
 > 记录一些个人使用或生产实践过程中常用的NGINX配置
@@ -1036,6 +1075,10 @@ stream {
     #...
 }
 ```
+
+
+
+[Back To Toc](#nginx-notes)
 
 
 
@@ -1170,6 +1213,125 @@ server {
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
+### 请求缓冲
+
+请求缓冲指 读取请求时 client_body_buffer_size 的相关配置，相关概念比较容易忘记或混淆，笔记一下
+
+```nginx
+http {
+    # ...
+
+    # 设置请求体最大值
+    # 默认 1m
+    # 设置 0 关闭请求体校验
+    client_max_body_size 1m;
+
+    # 设置读取请求体的缓存区大小 超过此大小将 写入临时文件
+	client_body_buffer_size 8k;
+
+    # 限制请求头的大小
+    # 请求头 例如 Host lkarrie.com
+    # 超过此值 large_client_header_buffers 配置生效
+	client_header_buffer_size 1k;
+
+    # 限制超过 client_header_buffer_size 的请求 请求行和请求头大小
+    # 请求行(request line)的大小不能超过 8k（设置值） 否则返回414 (Request-URI Too Large) 错误
+    # 每一个请求头不能超过 8k（设置值） 否则返回400
+    # 请求行和请求头总大小不能超过 4x8k（32k 设置值）
+	large_client_header_buffers 4 8k;
+    
+    # ...
+}
+```
+
+个人在生产环境中使用的配置
+```nginx
+http {
+    # ...
+	client_max_body_size 100m;
+	client_body_buffer_size 128k;
+	client_header_buffer_size 256k;
+	large_client_header_buffers 4 256k; 
+	# ...
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+### 代理缓冲
+
+代理缓存指 读取代理服务器响应时 proxy_buffering 的相关配置，相关概念比较容易忘记或混淆，笔记一下
+
+```nginx
+server {
+    listen 443;
+    location / {
+        
+        # NGINX首次读取响应数据的缓冲区大小（注意和代理缓存区 区分）
+        proxy_buffer_size 8k;
+        
+        # 启用代理缓冲 默认开启
+        # 缓存代理服务器的响应数据
+        # 缓存大小由 proxy_buffer_size、proxy_buffers 配置决定
+        # 如果响应大小超过 proxy_buffer_size、proxy_buffers 设置的内存值
+        # 部分响应将写入临时文件中 临时文件的大小由 proxy_max_temp_file_size、proxy_temp_file_write_size 配置决定
+        proxy_buffering on;
+        # proxy_buffering off;
+        # 如果代理缓冲关闭
+        # NGINX将接收代理服务器的响应同步返回给客户端
+        # 一次请求接收的最大数据 由 proxy_buffer_size 配置决定
+
+        # 代理缓冲也可以通过响应头中包含 X-Accel-Buffering yes、X-Accel-Buffering no 来控制
+		# 可以通过 proxy_ignore_headers 屏蔽后端响应 X-Accel-Buffering 来控制代理缓存
+
+        # 设置代理缓冲区的大小为 64k (8x8k) 
+        proxy_buffers 8 8k;
+        
+        # 当代理缓冲开启后 限制向客户端发送响应的缓冲区总大小
+        # proxy_busy_buffers_size 不是独立的空间
+  		# 它是 proxy_buffers 和 proxy_buffer_size 的一部分
+  		# Nginx会在没有完全读完后端响应的时候就开始向客户端传送数据，所以它会划出一部分缓冲区来专门向客户端传送数据(这部分的大小是由proxy_busy_buffers_size来控制的，建议为proxy_buffers中单个缓冲区大小的2倍)，然后它继续从后端取数据，缓冲区满了之后就写到磁盘
+        proxy_busy_buffers_size 16k;
+        
+        # 当代理缓冲开启后 响应大小 超过首次读取响应的缓冲区和代理缓冲的缓存区大小 
+        # 超过的部分 将写入临时文件中 本配置限制一个临时文件的总大小
+        # 默认 1024m
+        proxy_max_temp_file_size 1024m;
+        # 限制单次写入临时文件操作的大小
+        proxy_temp_file_write_size 16k;
+
+    }
+}
+```
+
+个人在生产环境中使用的配置
+
+```nginx
+http {
+    # ... 
+    proxy_buffer_size 128K;
+    proxy_buffers 4 128k;
+    proxy_busy_buffers_size 256k;
+    proxy_temp_file_write_size 256k;
+    proxy_max_temp_file_size 128m;
+    # ... 
+}    
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
 ### 正向代理
 
 这里正向代理主要记录阿里的三方模块 [ngx_http_proxy_connect_module](https://github.com/chobits/ngx_http_proxy_connect_module) https的正向代理
@@ -1224,6 +1386,10 @@ server {
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ### 静态缓存
 
 Nginx中设置静态资源缓存有两种方法
@@ -1261,6 +1427,10 @@ server{
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ### 逻辑判断
 
 记录一些NGINX中 if、and、or的配置写法
@@ -1291,6 +1461,10 @@ server {
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ### 安全配置
 
 记录一些安全配置
@@ -1306,6 +1480,10 @@ server {
   * max-age：设置浏览器收到请求后多少秒内凡是访问这个域名必须使用HTTPS
   * includeSubdomains：可选，当前规则使用所有子域名
   * preload：可选，加入预加载列表
+
+
+
+[Back To Toc](#nginx-notes)
 
 
 
@@ -1337,19 +1515,30 @@ server {
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ## 常见的状态码问题分析
 
 ### 101
 
+多见于websocket系统的场景，从http切换至更高协议时，会发送切换协议的请求，响应状态码即为101
+
+曾经遇到过grafana的页面因为代理了好几层出现了问题，无法建立ws链接，但是大盘页面会一直发送101请求期望升级协议
+
+总之大量的 101 状态请求是高协议切换失败造成的，为什么失败需要具体分析
+
+
+
 ### 400
 
-### 408
+当客户端收到400的响应码，大概率是NGINX这层出现了问题
 
-### 412
+造成400的原因可能有
 
-### 499
+* 请求行和体超过 large_client_header_buffers 的限制
+* 请求行包含未转移的特殊字符
 
-### 502
 
-### 504
 
