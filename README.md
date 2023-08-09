@@ -31,13 +31,16 @@
     * [静态缓存](#静态缓存)
     * [逻辑判断](#逻辑判断)
     * [安全配置](#安全配置)
-    * [其他配置](#其他配置)
-      * [location 失效](#location-失效)
+    * [其他配置/资料](#其他配置资料)
+      * [Location 失效](#location-失效)
+      * [Location 详解](#location-详解)
+      * [Proxy\_pass 后置处理](#proxy_pass-后置处理)
+      * [Root 和 alias](#root-和-alias)
+      * [Try\_files](#try_files)
   * [常见的状态码问题分析](#常见的状态码问题分析)
     * [101](#101)
     * [400](#400)
-
-
+    * [408](#408)
 
 ## 安装
 
@@ -54,6 +57,10 @@ NGINX版本（社区） 1.18.0 1.20.2
 * [proxy_connect-正向代理解决方案](https://github.com/chobits/ngx_http_proxy_connect_module)
 
 * [dynamic_upstream-动态更新upstream server](https://github.com/cubicdaiya/ngx_dynamic_upstream)
+
+推荐的参考网站
+
+* [官方wiki](https://www.nginx.com/resources/wiki/)，其中有很多功指引和三方模块的收录
 
 
 
@@ -1054,6 +1061,10 @@ http{
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 #### STREAM 长链接
 
 在NGINX的四层代理中使用长链接
@@ -1133,6 +1144,10 @@ http {
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 #### HTTPS反向代理
 
 HTTPS我使用的不是很多，目前工作中SSL卸载是在硬件上实现的，证书同样也是在硬件上
@@ -1164,6 +1179,10 @@ http {
 ```
 
 **注意**：如果你的网站配置了 ssl_protocols TLSv1.3，但是检测网站TLS支持版本并不包含TLS 1.3，大概率是NGINX编译的openssl版本并不支持TLS 1.3
+
+
+
+[Back To Toc](#nginx-notes)
 
 
 
@@ -1364,7 +1383,7 @@ server {
     # defined by yourself for non-CONNECT requests
     # Example: reverse proxy for non-CONNECT requests
     location / {
-        proxy_pass $scheme://$host$request_uri;
+        proxy_pass $scheme://$http_host$request_uri;
         proxy_buffers 256 4k;
         proxy_max_temp_file_size 0k;
         proxy_connect_timeout 30;
@@ -1483,13 +1502,9 @@ server {
 
 
 
-[Back To Toc](#nginx-notes)
+### 其他配置/资料
 
-
-
-### 其他配置
-
-#### location 失效
+#### Location 失效
 
 ``` nginx	
 server {
@@ -1499,10 +1514,10 @@ server {
     # 当 proxy_pass 包含变量时 location 替换请求路径的功能会失效
     # 例如请求路径为 /test/api/xxx  期望NGINX处理后 转发路径为 /api/xxx 
     # 如下的配置就不能实现    
-    #location /test/ {
-    #	proxy_pass https://$test;
+    # location /test/ {
+    #	 proxy_pass https://$test;
     #    proxy_set_header Host $test;
-    #}    
+    # }
         
     # 使用正则处理这种情况
     location ~ /test/(.*) {
@@ -1519,26 +1534,243 @@ server {
 
 
 
+#### Location 详解
+
+> 内容引用自 [nginx的location与proxy_pass指令超详细讲解及其有无斜杠( / )结尾的区别 - 顾志兵 - 博客园 (cnblogs.com)](https://www.cnblogs.com/sandgull/p/column-nginx-config_of_location_and_proxy_pass_and_the_difference_of_absence_of_tail_slash.html)
+>
+> 结合自己理解稍作调整
+
+##### 匹配模式
+
+根据location后的符号，匹配模式分为三类，分别是：**前缀匹配**、**精确匹配**和**正则匹配**，详细说明如下：
+
+- 无或空
+  即不指定任何匹配模式符号，此时，它代表**前缀匹配**。比如 location /books/ { ... }，它可以匹配/books/index.html、/books/computer/GitDefinitiveGuide.pdf
+
+- **=**
+  符号 = 代表**精确匹配**，要求请求的uri与该符号后的uri样式完全一样，比如 location = /books { ... }，它可以精确的匹配/books这样的uri，像/books/、/books/index.html、/books.doc、/booksmark.pdf这样的uri均无法匹配。
+
+  精确匹配一旦成功，则整个匹配过程结束，不再继续尝试匹配其它的location
+
+- **~**
+  符号 ~ 代表**正则匹配**，并且是区分大小的。比如 location ~ \.(gif|jpg|PNG)$ { ... }，它可以匹配/red-rock.jpg和/img/pigion.gif，但不能匹配/img/greatwall.png，因为这里的png是小写的，而 ~ 匹配的字符是大小写敏感的。
+
+- **~***
+  符号 ~* 代表**正则匹配**，并且它不区分大小的。比如 location ~* \.(gif|jpg|PNG)$ { ... }，它可以匹配/red-rock.jpg和/img/pigion.gif，或可以/img/greatwall.png，尽管这里的png是小写的，但 ~* 匹配不区分大小写，依然可以匹配。
+
+- **^~**
+  符号 ^~ 代表的匹配规则很特别，它看上去像是一个正则匹配，实则不是，它依然代表的是**前缀匹配**，与默认的前缀匹配（即没有任何符号的那种）的区别是：假定一个server内配置了多个前缀型的location和多个正则location，如果这些前缀location中，最终匹配的location是一个 ^~ 的话，则不再尝试后续的正则匹配。
+
+  简而言之，^~就是一个禁止做正则匹配的前缀匹配，从它的功能定义上来看，这个^~符号改成!~更形象些，毕竟感叹号!就代表否定的意思，而^本身就是一个正则表达式的特殊符号，很容易引起误会。
+
+##### 处理流程
+
+location指令的处理流程，总体上分类三个阶段，分别是：uri规范化处理、uri匹配、后置处理，详细说明如下：
+
+1. uri规范化处理
+   这一步是处理原始uri串中不规范的内容，将其规范花后，方便后续做匹配，这些处理包括：
+
+   - 解码 &xx 这样的url编码字符
+   - 解析 . 和 .. 到这些符号所引用的目录上，比如/comment/top/../top100，处理后会变成/comment/top100
+   - 将多个连续的/压缩成一个，比如/films/science-fiction///wandering-earth，处理后会变成/films/science-fiction/wandering-earth
+
+2. uri匹配
+   uri匹配有前面提到的三种类型，即：精确匹配、前缀匹配和正则匹配。假定一个server配置中，有多个精确匹配的location、多个前缀匹配的location和多个正则匹配的location。则整个匹配流程是这样的：
+
+   - 先做精确匹配，按照精确匹配location在配置文件中的出现顺序进行，一旦命中一个，则整个匹配过程结束。
+
+   - 若精确匹配没有命中，则执行前缀匹配，按照配置文件中前缀location出现的顺序执行，如果命中多个，则只记录location配置内容最长的那个。
+     假定有两个前缀配置分别是：location /films/ { ... } 和 location /films/nature/ { ... }。请求地址/films/nature/aerial-view-of-china.mp4与这两个前缀locaton配置均能匹配，但最终将只保留第二个匹配，因为它的配置前缀（即/films/nature）最长。由此可以推断出，默认的配置（即 location / { ... } ）一定是兜底的匹配，当所有其它类型的匹配均未命中时，它一定能命中。
+
+   - 接着再按照配置文件中的顺序，执行正则匹配，与前缀匹配不同的是：一旦命中一个正则匹配，整个匹配就结束了，不再对后面的正则location进行匹配。并且整个匹配的结果就是这个正则location。如果没有一个正则命中，则整个匹配的结果就是上面前缀匹配中，记录的那个location内容最长的命中结果。
+     假定有两个正则配置分别是：location ~* \.(jpg|gif|png)$ { ... } 和 location ~* \.(png|jpeg|svg)$ { ... }。请求地址/img/logo.png将只会与第一个匹配，尽管它也满足第二个正则表达式，但由于第一个正则的位置在前，并且匹配成功，因此就不再进行后面的匹配了。
+
+     > ⚠️ 例外情况：
+     > 有一个特殊的前缀匹配，即：^~，如果在前缀匹配结束后，命中的location是用 ^~ 修饰的，就不会进入正则匹配阶段了。
+
+3. 后置处理
+   在uri匹配结束后，便执行命中location指令中，花括号{}内的指令。主要有两类，要么是从root指令配置的目录下查找相应的文件，要么执行其它代理类指令，例如proxy_pass
+
+##### 匹配修饰符对比
+
+表格对比更加直观，其中的优先级数字1、2、3，是数字越小，优先级越高
+
+|        |        |            |            |                |                                                              |
+| ------ | ------ | ---------- | ---------- | -------------- | ------------------------------------------------------------ |
+| 修饰符 | 优先级 | 是否为正则 | 区分大小写 | 命中后继续匹配 | 备注                                                         |
+| =      | 1      | ❌          | ✔️          | ❌              |                                                              |
+| ^~     | 2      | ❌          | ✔️          | ✔️              | 在整个前缀匹配结束后，如果最终结果是一个^~修饰的location, 则不进行后续的正则匹配 |
+|        | 2      | ❌          | ✔️          | ✔️              | 第一列没有内容，因为没有任何字符，其含义就是前缀匹配         |
+| ~      | 3      | ✔️          | ❌          | ❌              |                                                              |
+| ~*     | 3      | ✔️          | ✔️          | ❌              |                                                              |
+
+##### 精确匹配优化
+
+通常情况下，server里都会有一个location / {...} 这样的配置，它可以匹配所有的请求。如果一个网站的首页访问最频繁，比如http://localhost/，但该网站却配置了非常多的location，那么首页uri这个请求，需要在匹配完所有的location后，才能得出最终命中的location为 / 。在此期间，其它的那些匹配尝试明显是多余的。为此，可能通过为 / 提供一个精确匹配来提高性能，就像下面这样：
+
+```nginx
+location = / {
+    ...
+}
+location / {
+    ...
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### Proxy_pass 后置处理
+
+location 和 proxy_pass 的uri转化规则很容易忘记，记录一下
+
+**关注proxy_pass后是否存在 / 或 /xxx**
+
+```nginx
+server {
+    listen 80;
+    
+    #请求url http://localhost/a/b/c/d
+    
+    #配置1
+    #proxy pass 后地址 http://localhost/c/d
+    location /a/b/ {
+            proxy_pass http://localhost:8080/;
+    }
+
+    #配置2
+    #proxy pass 后地址 http://localhost/a/b/c/d
+    location /a/b/ {
+            proxy_pass http://localhost:8080;
+    }
+
+    #配置3
+    #proxy pass 后地址 http://localhost/ec/d
+    location /a/b/ {
+            proxy_pass http://localhost:8080/e;
+            proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    #配置4
+	#proxy pass 后地址 http://localhost/e/c/d    
+    location /a/b/ {
+            proxy_pass http://localhost:8080/e/;
+            proxy_set_header X-Real-IP $remote_addr;
+    }    
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### Root 和 alias
+
+```nginx
+server {
+    listen 80;
+    
+    # http://localhost/static/image.jpg
+    # html/www/static/image.jpg
+    location /static/ {
+        root html/www/;
+    }
+
+    # http://localhost/static/image.jpg
+    # html/www/image.jpg
+    location /static/ {
+        # 注意alias后 路径需要加 /
+        alias html/www/;
+    }
+}    
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### Try_files
+
+try_files 在不是哈希路由的前端项目用的比较多，需要配置try_files 在当页面刷新时，重新定位到index.html 否则会404
+
+```nginx
+server {
+    listen 80;
+    
+    location / {
+        index  index.html index.htm;
+        # 正常请求 html/test 目录下的资源
+        root html/test;
+        # 如果请求路径为 http:/localhost/home
+        # 依次尝试请求root配置的目录文件 html/test/home html/test/home/index.html html/test/index.html
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
 ## 常见的状态码问题分析
 
 ### 101
 
 多见于websocket系统的场景，从http切换至更高协议时，会发送切换协议的请求，响应状态码即为101
 
-曾经遇到过grafana的页面因为代理了好几层出现了问题，无法建立ws链接，但是大盘页面会一直发送101请求期望升级协议
+曾经遇到过grafana的页面因为代理了好几层出现了问题，无法建立ws链接，但是监控大盘页面会一直发送101请求期望升级协议
 
 总之大量的 101 状态请求是高协议切换失败造成的，为什么失败需要具体分析
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ### 400
 
-当客户端收到400的响应码，大概率是NGINX这层出现了问题
+当客户端收到400的响应码，大概率是经过NGINX这层出现了问题
 
 造成400的原因可能有
 
 * 请求行和体超过 large_client_header_buffers 的限制
-* 请求行包含未转移的特殊字符
+* 请求行包含未转义的特殊字符
+
+曾经遇过一次生产事故，java代码中调整了String相关工具类，导致发给nginx的uri特殊字符没有转义，造成了nginx拦截请求并返回了400状态码
 
 
+
+[Back To Toc](#nginx-notes)
+
+
+
+### 408
+
+408 多发生在大报文传输的请求上，例如附件上传
+
+NGINX上可能导致408的配置主要有
+
+client_body_buffer_size
+
+client_body_timeout
+
+client_header_timeout
+
+调大相关配置后，大量408依然无法修复的话，唯一的可能就是网络设备丢包，可以通过在NGINX服务器上抓包确认丢包的问题
+
+曾经遇过一次生产事故，在NGINX上找了半天原因，没有考虑到更前网络设备的 ping loss
+
+
+
+[Back To Toc](#nginx-notes)
 
