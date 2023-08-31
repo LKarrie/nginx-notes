@@ -1,46 +1,52 @@
 # NGINX Notes
 
-* [NGINX Notes](#nginx-notes)
-  * [安装](#安装)
-    * [初始化工作环境](#初始化工作环境)
-    * [准备源码包](#准备源码包)
-    * [编译安装](#编译安装)
-  * [运维](#运维)
-    * [热升级/重启](#热升级重启)
-    * [日志管理](#日志管理)
-    * [日志分析](#日志分析)
-    * [日志清理](#日志清理)
-    * [开机自启](#开机自启)
-    * [监控](#监控)
-      * [Vhost\_traffic](#vhost_traffic)
-      * [Vhost\_traffic Prometheus](#vhost_traffic-prometheus)
-      * [Vhost\_traffic Control](#vhost_traffic-control)
-    * [高可用](#高可用)
-      * [Keepalived](#keepalived)
-  * [常用配置](#常用配置)
-    * [长链接](#长链接)
-      * [HTTP 长链接](#http-长链接)
-      * [STREAM 长链接](#stream-长链接)
-    * [反向代理](#反向代理)
-      * [HTTP反向代理](#http反向代理)
-      * [HTTPS反向代理](#https反向代理)
-      * [NGINX域名处理](#nginx域名处理)
-    * [请求缓冲](#请求缓冲)
-    * [代理缓冲](#代理缓冲)
-    * [正向代理](#正向代理)
-    * [静态缓存](#静态缓存)
-    * [逻辑判断](#逻辑判断)
-    * [安全配置](#安全配置)
-    * [其他配置/资料](#其他配置资料)
-      * [Location 失效](#location-失效)
-      * [Location 详解](#location-详解)
-      * [Proxy\_pass 后置处理](#proxy_pass-后置处理)
-      * [Root 和 alias](#root-和-alias)
-      * [Try\_files](#try_files)
-  * [常见的状态码问题分析](#常见的状态码问题分析)
-    * [101](#101)
-    * [400](#400)
-    * [408](#408)
+[NGINX Notes](#nginx-notes)
+
+* [安装](#安装)
+  * [初始化工作环境](#初始化工作环境)
+  * [准备源码包](#准备源码包)
+  * [编译安装](#编译安装)
+* [运维](#运维)
+  * [热升级/重启](#热升级重启)
+  * [日志管理](#日志管理)
+  * [日志分析](#日志分析)
+  * [日志清理](#日志清理)
+  * [开机自启](#开机自启)
+  * [监控](#监控)
+    * [Vhost\_traffic](#vhost_traffic)
+    * [Vhost\_traffic Prometheus](#vhost_traffic-prometheus)
+    * [Vhost\_traffic Control](#vhost_traffic-control)
+  * [高可用](#高可用)
+    * [Keepalived](#keepalived)
+* [常用配置](#常用配置)
+  * [长链接](#长链接)
+    * [HTTP 长链接](#http-长链接)
+    * [STREAM 长链接](#stream-长链接)
+  * [反向代理](#反向代理)
+    * [HTTP反向代理](#http反向代理)
+    * [HTTPS反向代理](#https反向代理)
+    * [NGINX域名处理](#nginx域名处理)
+  * [请求缓冲](#请求缓冲)
+  * [代理缓冲](#代理缓冲)
+  * [正向代理](#正向代理)
+  * [静态缓存](#静态缓存)
+  * [逻辑判断](#逻辑判断)
+  * [处理跨域](#处理跨域)
+  * [安全配置](#安全配置)
+  * [真实IP透传](真实IP透传)
+  * [Websockets](Websockets)
+  * [其他配置/资料](#其他配置资料)
+    * [Location 失效](#location-失效)
+    * [Location 详解](#location-详解)
+    * [Proxy\_pass 后置处理](#proxy_pass-后置处理)
+    * [Root 和 alias](#root-和-alias)
+    * [Try\_files](#try_files)
+    * [Proxy_redirect](#Proxy_redirect) 
+    * [Proxy_cookie_domain](#Proxy_cookie_domain) 
+* [常见的状态码问题分析](#常见的状态码问题分析)
+  * [101](#101)
+  * [400](#400)
+  * [408](#408)
 
 ## 安装
 
@@ -1480,6 +1486,68 @@ server {
 
 
 
+当遇到无法在if中编写的NGINX命令，但是又需要动态设置值的情况时，可以使用map替换if，使用多个map替换if {} else if {} else {}
+
+例如根据url参数设置不用的kibana自动登录用户
+
+```nginx
+# 获取 kibana 单点登录 token
+# 加密
+# echo -n 'test:test' | base64
+# dGVzdDp0ZXN0
+# 解密
+# echo -n 'dGVzdDp0ZXN0' | base64 -d
+# test:test
+
+map $args $token {
+    ~(SYSTEMA) 'Basic dGVzdGE6dGVzdA==';
+    ~(SYSTEMB) 'Basic dGVzdGI6dGVzdA==';
+    default 'Basic dGVzdDp0ZXN0';        
+}
+
+map $http_referer $token {
+    ~(SYSTEMA) 'Basic dGVzdGE6dGVzdA==';
+    ~(SYSTEMB) 'Basic dGVzdGI6dGVzdA==';
+    default 'Basic dGVzdDp0ZXN0';        
+}
+
+server {
+    listen 443;
+    # proxy_set_header 无法嵌套进 if 中 通过 map 修改变量值做到动态添加请求头
+    proxy_set_header Authorization $token;
+    #...
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+### 处理跨域
+
+```nginx
+server {
+    listen 80;
+    location / {
+        # nginx 拦截 预校验请求 并返回成功状态204
+        if ($request_method ~* OPTIONS) {
+            add_header 'Access-Control-Allow-Origin' '*';
+            add_header 'Access-Control-Allow-Credentials' 'true';
+            add_header 'Access-Control-Allow-Methods' 'GET POST';
+            add_header 'Access-Control-Allow-Headers' '*';
+            return 204;
+        }
+        # 配置调用方域名 允许跨域
+        add_header 'Access-Control-Allow-Origin' 'https://browsedomain.com';
+        proxy_pass http://192.168.0.2:9081;
+    }
+}
+```
+
+
+
 [Back To Toc](#nginx-notes)
 
 
@@ -1499,6 +1567,70 @@ server {
   * max-age：设置浏览器收到请求后多少秒内凡是访问这个域名必须使用HTTPS
   * includeSubdomains：可选，当前规则使用所有子域名
   * preload：可选，加入预加载列表
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+### 真实IP透传
+
+一些安全性较高的系统，在被NGINX代理后可能出现无法登录无法访问或403的问题，需要将真实IP透传到后端
+
+例如一些报表系统，或者java client访问nginx代理后的minio server
+
+```nginx
+server {
+    listen 80;
+    location / {
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-NginX-Proxy true;
+        
+        # 设置真实IP的 http头 默认 X-Real-IP
+        # 一般不需要使用 real_ip_header 
+        # 如果需要调整真实ip的http头 nginx需要增加编译参数 --with-http_realip_module
+        # real_ip_header X-Real-IP;
+        # real_ip_header X-Forwarded-For;
+        proxy_pass http://192.168.0.2:9000;
+    }        
+} 
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+### Websockets
+
+NGINX代理一些 如Grafana、Minio console等 使用websocket的系统时，需要增加如下的配置使NGINX支持 http协议升级为 websocket
+
+```nginx
+# map 最好放在nginx.conf主配置文件中
+map $http_upgrade $connection_upgrade{
+    default upgrade;
+    '' close;
+}
+
+server {
+    listen 80;
+    location / {
+            proxy_http_version 1.1; 
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_pass http://192.168.0.2:9001;
+    }        
+} 
+```
+
+
+
+[Back To Toc](#nginx-notes)
 
 
 
@@ -1675,6 +1807,8 @@ server {
 server {
     listen 80;
     
+    # root 和 alias 的主要区别就是 是否拼接location做目录 寻找静态资源文件
+    
     # http://localhost/static/image.jpg
     # html/www/static/image.jpg
     location /static/ {
@@ -1711,6 +1845,52 @@ server {
         # 如果请求路径为 http:/localhost/home
         # 依次尝试请求root配置的目录文件 html/test/home html/test/home/index.html html/test/index.html
         try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### Proxy_redirect
+
+当服务端返回的重定向地址并不是期望的地址时 需要使用proxy_redirect 用于调整返回的 location
+
+```nginx
+server {
+    listen 80;
+    
+    location / {
+        proxy_pass http://192.160.0.3:80;
+        # 重新向地址 调整为http 且 修改域名为 test.com
+        proxy_redirect ~^http://test.dev(.*) https://test.com$1
+        # 通常重定向后 如果cookie参与了认证流程 大概率需要nginx 进行cookie的调整
+        # proxy_cookie_domain
+    }
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### Proxy_cookie_domain 
+
+NGINX在代理 依赖cookie认证模式的系统时，服务端返回的cookie domain并不一定和NGINX代理后的地址相同，cookie domain 和浏览器访问地址不同会导致写入cookie被阻止，这时就需要使用 proxy_cookie_domain 命令调整服务端返回的cookie
+
+```nginx
+# 127.0.0.1:8080 代理 test.com 
+server {
+    listen 8080;
+    location / {
+        proxy_set_header Host test.com;
+        proxy_pass http://192.160.0.2:80;
+        proxy_cookie_domain ~\.?test.com 127.0.0.1;
     }
 }
 ```
