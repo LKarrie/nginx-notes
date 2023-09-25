@@ -1024,7 +1024,7 @@ systemctl restart keepalived
 
 ## 常用配置
 
-> 记录一些个人使用或生产实践过程中常用的NGINX配置
+> 记录一些生产实践过程中常用的NGINX配置
 
 
 
@@ -1567,6 +1567,26 @@ server {
   * max-age：设置浏览器收到请求后多少秒内凡是访问这个域名必须使用HTTPS
   * includeSubdomains：可选，当前规则使用所有子域名
   * preload：可选，加入预加载列表
+
+CSRF和防盗链
+
+* valid_referers
+
+  * none：valid_referers 后包含blocked，表示 不包含 Referer 头的请求可以通过校验 
+  * blocked：valid_referers 后包含blocked，表示 Referer 头中不包含 http或https的请求可以通过校验 
+  * server_names：valid_referers 后包含server_names，表示 Referer 头中**只有包含** 当前server的server_name 或 server_names 后的正则匹配域名或实际域名 的请求可以通过校验 
+
+* 参考配置
+
+  ``` nginx
+  valid_referers none blocked server_names
+                 *.example.com example.* www.example.org/galleries/
+                 ~\.google\.;
+  
+  if ($invalid_referer) {
+      return 403;
+  }
+  ```
 
 
 
