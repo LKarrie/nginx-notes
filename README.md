@@ -1,52 +1,53 @@
 # NGINX Notes
 
-[NGINX Notes](#nginx-notes)
-
-* [安装](#安装)
-  * [初始化工作环境](#初始化工作环境)
-  * [准备源码包](#准备源码包)
-  * [编译安装](#编译安装)
-* [运维](#运维)
-  * [热升级/重启](#热升级重启)
-  * [日志管理](#日志管理)
-  * [日志分析](#日志分析)
-  * [日志清理](#日志清理)
-  * [开机自启](#开机自启)
-  * [监控](#监控)
-    * [Vhost\_traffic](#vhost_traffic)
-    * [Vhost\_traffic Prometheus](#vhost_traffic-prometheus)
-    * [Vhost\_traffic Control](#vhost_traffic-control)
-  * [高可用](#高可用)
-    * [Keepalived](#keepalived)
-* [常用配置](#常用配置)
-  * [长链接](#长链接)
-    * [HTTP 长链接](#http-长链接)
-    * [STREAM 长链接](#stream-长链接)
-  * [反向代理](#反向代理)
-    * [HTTP反向代理](#http反向代理)
-    * [HTTPS反向代理](#https反向代理)
-    * [NGINX域名处理](#nginx域名处理)
-  * [请求缓冲](#请求缓冲)
-  * [代理缓冲](#代理缓冲)
-  * [正向代理](#正向代理)
-  * [静态缓存](#静态缓存)
-  * [逻辑判断](#逻辑判断)
-  * [处理跨域](#处理跨域)
-  * [安全配置](#安全配置)
-  * [真实IP透传](真实IP透传)
-  * [Websockets](Websockets)
-  * [其他配置/资料](#其他配置资料)
-    * [Location 失效](#location-失效)
-    * [Location 详解](#location-详解)
-    * [Proxy\_pass 后置处理](#proxy_pass-后置处理)
-    * [Root 和 alias](#root-和-alias)
-    * [Try\_files](#try_files)
-    * [Proxy_redirect](#Proxy_redirect) 
-    * [Proxy_cookie_domain](#Proxy_cookie_domain) 
-* [常见的状态码问题分析](#常见的状态码问题分析)
-  * [101](#101)
-  * [400](#400)
-  * [408](#408)
+* [NGINX Notes](#nginx-notes)
+  * [安装](#安装)
+    * [初始化工作环境](#初始化工作环境)
+    * [准备源码包](#准备源码包)
+    * [编译安装](#编译安装)
+  * [运维](#运维)
+    * [热升级/重启](#热升级重启)
+    * [日志管理](#日志管理)
+    * [日志分析](#日志分析)
+    * [日志清理](#日志清理)
+    * [开机自启](#开机自启)
+    * [监控](#监控)
+      * [Vhost\_traffic](#vhost_traffic)
+      * [Vhost\_traffic Prometheus](#vhost_traffic-prometheus)
+      * [Vhost\_traffic Control](#vhost_traffic-control)
+    * [高可用](#高可用)
+      * [Keepalived](#keepalived)
+  * [常用配置](#常用配置)
+    * [长链接](#长链接)
+      * [HTTP 长链接](#http-长链接)
+      * [STREAM 长链接](#stream-长链接)
+    * [反向代理](#反向代理)
+      * [HTTP反向代理](#http反向代理)
+      * [HTTPS反向代理](#https反向代理)
+      * [NGINX域名处理](#nginx域名处理)
+    * [请求缓冲](#请求缓冲)
+    * [代理缓冲](#代理缓冲)
+    * [正向代理](#正向代理)
+    * [静态缓存](#静态缓存)
+    * [逻辑判断](#逻辑判断)
+    * [处理跨域](#处理跨域)
+    * [安全配置](#安全配置)
+    * [真实IP透传](#真实ip透传)
+    * [Websockets](#websockets)
+    * [其他配置/资料](#其他配置资料)
+      * [Location 失效](#location-失效)
+      * [Location 详解](#location-详解)
+      * [Proxy\_pass 后置处理](#proxy_pass-后置处理)
+      * [Root 和 alias](#root-和-alias)
+      * [Try\_files](#try_files)
+      * [Proxy\_redirect](#proxy_redirect)
+      * [Proxy\_cookie\_domain](#proxy_cookie_domain)
+  * [常见的状态码问题分析](#常见的状态码问题分析)
+    * [101](#101)
+    * [400](#400)
+    * [408](#408)
+    * [413](#413)
+* [备忘](#备忘)
 
 ## 安装
 
@@ -593,7 +594,7 @@ find /app/logs/nginx/ -mtime +6 -name "access-*.log" -exec rm -f {} \;
 
 利用crontab
 
-**注**：注意添加 -c -p 参数，如果需要覆盖编译参数的话
+**注**：注意添加 -c -p 参数，如果需要覆盖NGINX编译参数的话，crontab -e 添加定时任务，crontab -l 查看定时任务
 
 ```shell
 @reboot /app/nginx/sbin/nginx
@@ -876,7 +877,7 @@ mv keepalived.conf  keepalived.conf.default
 
 ``` keepalived.conf
 global_defs { 
-    # 全局唯一的主机标识,主备机使用不用的标识 
+    # 全局唯一的主机标识,主备机使用不同的标识 
     router_id server_a 
     script_user root
     enable_script_security
@@ -1527,6 +1528,8 @@ server {
 
 ### 处理跨域
 
+A域名下，调用B域名下的某个接口，或请求B域名下的某项资源，需要在B域名下添加类似如下的配置
+
 ```nginx
 server {
     listen 80;
@@ -1560,6 +1563,17 @@ server {
 
 *  add_header X-Frame-Options SAMEORIGIN;
   * 效果：同源域名才可以进行调用和iframe嵌入
+*  add_header X-Frame-Options ALLOW-FROM https://test.com;
+   *  效果：被ALLOW的地址iframe才可以嵌入
+   *  **注意**：
+      *  这是一个被废弃的配置，在较多的老版本浏览器均不适用，添加后需要进行测试！
+      *  可以使用 Content-Security-Policy: default-src https://test.com; 替代 ALLOW-FROM
+
+
+避免[XSS](https://developer.mozilla.org/en-US/docs/Glossary/Cross-site_scripting)攻击
+
+* add_header  Content-Security-Policy: default-src 'self' https://test.com; 
+  * 效果：只允配置项进行资源请求或脚本调用，详细参考 [Content-Security-Policy 文档](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers/Content-Security-Policy)
 
 对抗协议降级和Cookie劫持攻击
 
@@ -1572,9 +1586,13 @@ CSRF和防盗链
 
 * valid_referers
 
-  * none：valid_referers 后包含blocked，表示 不包含 Referer 头的请求可以通过校验 
+  * none：valid_referers 后包含none，表示 不包含 Referer 头的请求可以通过校验 
   * blocked：valid_referers 后包含blocked，表示 Referer 头中不包含 http或https的请求可以通过校验 
   * server_names：valid_referers 后包含server_names，表示 Referer 头中**只有包含** 当前server的server_name 或 server_names 后的正则匹配域名或实际域名 的请求可以通过校验 
+  * **注意**：
+    * 不论是 referers 或者 host 头都可以被篡改绕过校验，这种方式避免CSRF不是百分百可靠
+    * 建议使用 post 方式处理所有关键请求
+    * 建议使用 token 认证，不使用 cookie 认证
 
 * 参考配置
 
@@ -1588,7 +1606,15 @@ CSRF和防盗链
   }
   ```
 
+* 或直接if限制 host头，参考配置
 
+  ```nginx
+  if ($http_Host !~* ^(test1.com|test2.com)$ ) {
+      return 403;
+  }
+  ```
+
+  
 
 [Back To Toc](#nginx-notes)
 
@@ -1972,5 +1998,28 @@ client_header_timeout
 
 
 
+### 413
+
+client intended to send too large body : xxx bytes
+
+调整配置 client_max_body_size 200m;
+
+
+
 [Back To Toc](#nginx-notes)
+
+
+
+# 备忘
+
+自动生成文章TOC
+
+```markdown
+# 安装
+https://github.com/ekalinin/github-markdown-toc.go
+# 配置环境变量
+# 文章目录下 cmd
+# 执行
+gh-md-toc --depth=4 README.md
+```
 
