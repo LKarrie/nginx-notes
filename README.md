@@ -33,7 +33,10 @@
     * [处理跨域](#处理跨域)
     * [安全配置](#安全配置)
     * [真实IP透传](#真实ip透传)
+    * [区分浏览器](#区分浏览器)
     * [Websockets](#websockets)
+    * [代理UDP协议](#代理udp协议)
+    * [MAP控制上游](#map控制上游)
     * [其他配置/资料](#其他配置资料)
       * [Location 失效](#location-失效)
       * [Location 详解](#location-详解)
@@ -47,6 +50,9 @@
     * [400](#400)
     * [408](#408)
     * [413](#413)
+* [ANGIE](#angie)
+  * [编译](#编译)
+  * [配置](#配置)
 * [备忘](#备忘)
 
 ## 安装
@@ -1652,6 +1658,30 @@ server {
 
 
 
+### 区分浏览器
+
+一些网络通道短时间难以打通的话，可以通过浏览器区分不同系统
+
+```nginx
+server{
+    listen 8081;
+    location / {
+        if ($http_user_agent ~* "Edg") {
+            proxy_pass http://backend1;
+        }
+        if ($http_user_agent !~* "Edg") {
+            proxy_pass http://backend2;
+        }
+    }
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
 ### Websockets
 
 NGINX代理一些 如Grafana、Minio console等 使用websocket的系统时，需要增加如下的配置使NGINX支持 http协议升级为 websocket
@@ -1672,6 +1702,81 @@ server {
             proxy_pass http://192.168.0.2:9001;
     }        
 } 
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+### 代理UDP协议
+
+```nginx
+server {
+    # 代理UDP协议时
+    # proxy_timeout proxy_responses 组合控制会话时间
+    # 当未超过 proxy_responses 设置的回包数时 时间超过 proxy_timeout 结束会话
+    # 当超过 proxy_response 设置的回包数时 即可结束会话
+    
+    listen 53 udp reuseport;
+    # UDP 这项配置应该无效
+    # proxy_connect_timeout 1s;
+    proxy_timeout 3s;
+    # 代理DNS UDP 需要配置 
+    proxy_responses 1;
+    proxy_pass 1.1.1.1:53;
+}
+
+server {
+    listen 54 udp reuseport;
+    proxy_timeout 3s;
+    proxy_pass 1.1.1.2:53;
+    # 代理UDP时 有一种场景
+    # A -UDP- NGINX -UDP- B
+    # B 回包的时 会直接请求A 而不经过NGINX 这不是期望的情况
+    # 期望：B -> NGINX -> A
+    # 实际：B -> A	(跳过NGINX)
+    # 这时 可以通过 proxy_bind 修改请求的源地址为NGINX VIP 
+    # 实现：B -> NGINX -> A
+    proxy_bind nginx_vip_address transparent;
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+### MAP控制上游
+
+可以根据需求调整 匹配的变量 
+
+下例中使用 $remote_addr 匹配实现不同IP到不同的上游
+
+```nginx
+map $remote_addr $next {
+    ~1.1.1.1 next;
+    ~1.1.1.2 next;
+    ~1.1.1.3 next;
+    ~1.1.1.4 next;
+    default  default-next;
+}
+
+upstream next {
+    server 1.1.1.5;
+}
+
+upstream default-next {
+    server 1.1.1.6;
+}
+
+server {
+    listen 80;
+    server_name localhost;
+    proxy_pass http://$next;
+}
 ```
 
 
@@ -2003,6 +2108,111 @@ client_header_timeout
 client intended to send too large body : xxx bytes
 
 调整配置 client_max_body_size 200m;
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+# ANGIE
+
+为了支撑国密需求，安装ANGIE+铜锁
+
+* Angie
+
+> `Angie` is an efficient, powerful, and scalable web server that was forked from nginx:
+>
+> - Conceived by nginx ex-devs to extend the functionality far beyond the original.
+> - Acts as a drop-in replacement for nginx without major configuration changes.
+>
+> We build binary packages for a range of [systems and architectures](https://angie.software/en/install/), as well as [Docker images](https://angie.software/en/install/#docker-images). The source code is open in our [public repositories](https://angie.software/en/a_contribution/) under a [BSD-like license](https://angie.software/en/license/). Dynamic nginx modules are compatible with Angie; in fact, we build a [number of them](https://angie.software/en/install/#dynamic-modules).
+
+* 铜锁
+
+> 铜锁/Tongsuo是一个提供现代密码学算法和安全通信协议的开源基础密码库，为存储、网络、密钥管理、隐私计算等诸多业务场景提供底层的密码学基础能力，实现数据在传输、使用、存储等过程中的私密性、完整性和可认证性，为数据生命周期中的隐私和安全提供保护能力。
+
+
+
+## 编译
+
+* 资源准备和前置操作
+
+```bash
+ mkdir -p /app/angie_build
+ cd /app/angie_build
+ curl -O https://download.angie.software/files/angie-1.3.1.tar.gz
+ wget https://github.com/Tongsuo-Project/Tongsuo/archive/refs/tags/8.3.3.tar.gz
+ tar -zxvf 8.3.3.tar.gz
+ tar -zxvf angie-1.3.1.tar.gz
+ cd angie-1.3.1
+```
+
+* 编译
+
+```bash
+./configure --prefix=/app/angie \
+            --with-openssl=../Tongsuo-8.3.3 \
+            --with-openssl-opt=enable-ntls  \
+            --with-ntls \
+            --with-http_ssl_module
+
+make -j
+make install
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+## 配置
+
+- 开启 NTLS 功能
+
+```nginx
+listen ... ssl;
+ssl_ntls  on;
+```
+
+- 配置国密证书
+
+```nginx
+listen ... ssl;
+
+ssl_ntls  on;
+
+# dual NTLS certificate
+ssl_certificate      sign.crt enc.crt;
+ssl_certificate_key  sign.key enc.key;
+
+# can be combined with regular RSA certificate:
+ssl_certificate  rsa.crt;
+ssl_certificate  rsa.key;
+```
+
+- 配置国密套件
+
+```nginx
+# 确保下面配置中有这两个套件即可
+ssl_ciphers "ECC-SM2-SM4-CBC-SM3:ECDHE-SM2-WITH-SM4-SM3";
+```
+
+- 配置国密回源
+
+```nginx
+location /proxy {
+    proxy_ssl_ntls  on;
+
+    proxy_ssl_certificate      sign.crt enc.crt;
+    proxy_ssl_certificate_key  sign.key enc.key;
+
+    proxy_ssl_ciphers "ECC-SM2-WITH-SM4-SM3:ECDHE-SM2-WITH-SM4-SM3:RSA";
+
+    proxy_pass https://backend:443;
+}
+```
 
 
 
