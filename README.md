@@ -519,6 +519,45 @@ stream{
 
 
 
+### 日志时间
+
+NGINX日志的时间显示，是一个很重要但是很容易被忽视的问题，下面是一些我在生产实践中的总结
+
+* $time_iso8601 显示的是本地时间，这个时间参数记录的是**请求在NGINX上结束处理的时间，而不是请求开始时间**，例如：某个请求耗时3s（$request_time），nginx上输出的时间为 2023-11-13T09:22:16+08:00 ，这时如果进行抓包，第一个达到NGINX包的时间应该是 2023-11-13T09:22:16 减去 3s
+
+* 时间格式如果需要支持显示到毫秒，可以利用变量 $msec
+
+nginx显示毫秒时间的参考配置如下
+
+```nginx
+http{
+   	...
+        
+    
+    # 使用 逗号拼接毫秒时间 便于阅读 但是一些工具不好解析 比如 logstash
+    map $msec $time_iso8601_ms { ~(.*)\.(.*) $time_iso8601,$2; }
+    # 单独显示 毫秒时间
+    map $msec $only_ms { ~(.*)\.(.*) $2; }
+    # 去除逗号 显示包括毫秒的时间戳
+    map $msec $msec_no_decimal { ~(.*)\.(.*) $1$2; }
+    
+    log_format  access  '[$time_iso8601] [$time_iso8601_ms] [$msec_no_decimal] [$only_ms] $remote_user $remote_addr:$remote_port "$server_protocol $request_method $scheme://$http_host$request_uri" '
+                    '$status $body_bytes_sent $request_time $request_length "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for" '
+                    '"$upstream_addr" $upstream_status $upstream_response_time';
+
+    ...
+}
+```
+
+
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
 ### 日志分析
 
 日志分析相关，还是最好收拢到ES里，方便检索
