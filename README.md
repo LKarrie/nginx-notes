@@ -456,6 +456,17 @@ http{
         '~^(?<ymd>\d{4}-\d{2}-\d{2})' $ymd;
         default    'date-not-found';
     }
+    
+    #日志 变量含义
+    #$request_length:
+    #request length (including request line, header, and request body)
+
+    #$bytes_sent:
+    #response length (including header, and body)
+
+    #$body_bytes_sent:
+    #response length only include body.
+    
     log_format  access  '[$time_iso8601] $remote_user $remote_addr:$remote_port "$server_protocol $request_method $scheme://$http_host$request_uri" '
                         '$status $body_bytes_sent $request_time $request_length "$http_referer" '
                         '"$http_user_agent" "$http_x_forwarded_for" '
@@ -1536,6 +1547,29 @@ server {
 
 
 
+需要根据请求参数动态决定上游地址
+
+```nginx
+server {
+    # ...
+    location / {
+        	# curl -i http://localhost?ip=127.0.0.1:80
+            if ( $query_string ~ "ip=(.*)" ) {
+                    set $ip $1;
+            		# 端口 也可以包含在请求参数中
+                    proxy_pass http://$ip:8080;
+            }
+        	# 如果 if 表达式为 false 默认会走 if 外的proxy_pass配置 
+        	# 若注释默认 proxy_pass 则会返回 html 目录下的 index.html
+            # proxy_pass http://localhost:9000;
+    }
+}
+```
+
+
+
+
+
 当遇到无法在if中编写的NGINX命令，但是又需要动态设置值的情况时，可以使用map替换if，使用多个map替换if {} else if {} else {}
 
 例如根据url参数设置不用的kibana自动登录用户
@@ -1568,6 +1602,123 @@ server {
     #...
 }
 ```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+### 正则匹配
+
+与location中的匹配表达式不同，NGINX条件判断中正则表达式可以编写的很复杂，单独记录一下相关知识
+
+正则表达汇总参考语法
+
+```markdown
+# 除换行符以外的所有字符
+.
+# 字符串开头
+^
+# 字符串结尾
+$
+# 匹配数字、字符、空格
+\d,\w,\s
+# 匹配非数字、非字符、非空格
+\D,\W,\S
+# 匹配 a、b 或 c 中的一个字母
+[abc]
+# 匹配 a 到 z 中的一个字母
+[a-z]
+# 匹配除了 a、b 或 c 中的其他字母
+[^abc]
+# 匹配 aa 或 bb
+aa|bb
+# 0 次或 1 次匹配
+?
+# 匹配 0 次或多次
+* 
+# 匹配 1 次或多次
++
+# 匹配 n次
+{n}
+# 匹配 n次以上
+{n,}
+# 最少 m 次 最多 n 次匹配
+{m,n}
+# 捕获 expr 子模式 以 \1 使用它
+(expr)
+# 忽略捕获的子模式
+(?:expr)
+# 正向预查模式 expr
+(?=expr)
+# 负向预查模式 expr
+(?!expr)
+
+```
+
+NGINX中常见的匹配正则语法
+
+```markdown
+# 匹配正则时为true 区分字符大小写
+~
+# 匹配正则时为true  不区分字符大小写
+~* 
+
+# 不匹配正则时为true 区分字符大小写
+!~
+# 不匹配正则时为true 不区分字符大小写
+!~*
+```
+
+
+
+以网上的一串配置为例
+
+```nginx
+location ~* ^/test {
+	# 设置content type
+    # 如果不设置 在浏览器上请求 不会用html形式展示 会直接变成附件下载 
+	default_type text/html ;
+	
+    # 测试正则
+    # 当访问
+    # http://localhost/test?method=GET
+	# http://localhost/test?test=test&method=GET
+	# http://localhost/test?method=GET&test=test
+    # $1 捕获的就是 GET
+	if ($query_string ~ ".*(?:^|\?|&)method=(.+?)(?:(?:&.*)|$)") { 
+		return 200  "$1"; 
+	}
+	return 200  "default";
+}
+```
+
+但是如何解读这一串复杂的正则表达式？我相信肯定有哥们和我一样困惑过，网上有很多好的工具，比如：[图形化解析正则]([正则表达式在线测试 | 菜鸟工具 (runoob.com)](https://c.runoob.com/front-end/854/))
+
+![nginx-regexp1.png](assets/nginx-regexp1.png)
+
+![nginx-regexp2.png](assets/nginx-regexp2.png)
+
+通过图形和正则语法可以解读出上述的正则的构造和含义如下：
+
+* .*    表示配置除换行符以外的所有字符且不区分大小写
+* (?:^|\?|&)    分为两部分 (?:) 和中间的 ^|\?|&
+  * (?:)    是忽略捕获的子模式（参考上文中的正则表达汇总参考语法）只匹配但是不捕获字符
+  * ^|\?|&    表示以 ? 和 & 开头 其中\？是为问号添加了转义字符
+* method=    表示直接匹配 method= 这些字符
+* (.+?)    分为两部分 () 和中间的 .+?
+  *  ()    是捕获 expr 子模式（参考上文中的正则表达汇总参考语法）匹配后可以使用变量引用
+  * .+?    表示除换行符以外的所有字符，而且必须有一个（method=后没东西则不会命中正则）
+* (?:(?:&.\*)|$)    分为两个部分(?:) 和中间的 (?:&.*)|$
+  * (?:)    是忽略捕获的子模式（参考上文中的正则表达汇总参考语法）只匹配但是不捕获字符
+  *  (?:&.\*)|$    又可以分为两个部分  (?:&.*)  和 $ 中间的 | 表示或
+    *  (?:&.*)    表示以 &后跟着任意字符结尾
+    * $    表示直接结束
+
+
+
+按照正则表达汇总参考语法再结合图形化的正则表达式解读，可以更清楚的理解复杂正则表达式的含义，真的不理解也可以多收集收集相关NGINX的正则配置，看看就能应付大部分情况了
 
 
 
@@ -2262,10 +2413,10 @@ openssl version
 openssl ecparam -list_curves | grep SM2
 
 # 签名私钥
-openssl ecparam -genkey -name SM2 -out sign.key
+openssl ecparam -genkey -name SM2 -out signvip.key
 
 # 生成CSR
-openssl req -new -key sign.key -out sign.req
+openssl req -new -key signvip.key -out signvip.req
 ```
 
 
