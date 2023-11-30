@@ -35,6 +35,7 @@
     * [安全配置](#安全配置)
     * [真实IP透传](#真实ip透传)
     * [区分浏览器](#区分浏览器)
+    * [Cookie设置](#Cookie设置)
     * [Websockets](#websockets)
     * [代理UDP协议](#代理udp协议)
     * [MAP控制上游](#map控制上游)
@@ -51,6 +52,9 @@
     * [400](#400)
     * [408](#408)
     * [413](#413)
+  * [常用软件代理转发配置](#常用软件代理转发配置)
+    * [Minio](#Minio)
+    * [Grafana](#Grafana)
 * [ANGIE](#angie)
   * [编译](#编译)
   * [国密支撑](#国密支撑)
@@ -1562,11 +1566,14 @@ server {
         	# 如果 if 表达式为 false 默认会走 if 外的proxy_pass配置 
         	# 若注释默认 proxy_pass 则会返回 html 目录下的 index.html
             # proxy_pass http://localhost:9000;
+        	
+        	# 如果需要提取的IP后还有其他参数
+        	# curl -i http://localhost?ip=127.0.0.1:80&a=1&=2
+        	# 需要修改正侧表达式
+        	# ip=([^&]+)
     }
 }
 ```
-
-
 
 
 
@@ -1867,6 +1874,29 @@ server{
             proxy_pass http://backend2;
         }
     }
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+### Cookie设置
+
+NGINX多层代理之后系统Cookie设置可能存在问题，记录一下set cookie出现的问题和解决方法
+
+问题：secure 标记导致cookie无法设置
+
+![nginx-cookie-error1](assets/nginx-cookie-error1.png)
+
+```nginx
+server{
+	···
+    # 删除cookie中的 secure 标记
+    proxy_cookie_flags ~ nosecure;
+    ···
 }
 ```
 
@@ -2302,6 +2332,89 @@ client_header_timeout
 client intended to send too large body : xxx bytes
 
 调整配置 client_max_body_size 200m;
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+## 常用软件代理转发配置
+
+### Minio
+
+```nginx
+upstream minio-server {
+	server 127.0.0.1:9000;
+}
+
+server {
+    listen 9000;
+    server_name  minio-server;
+
+    location / {
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $http_host;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        chunked_transfer_encoding off;
+
+        proxy_pass http://minio-server;
+        proxy_read_timeout 30s;
+        proxy_send_timeout 30s;
+    }
+}
+
+
+upstream minio-console{
+	server 1.1.1.1:9001;
+}
+server {
+    listen 9001;
+    server_name  minio-console;
+
+    location / {
+        proxy_pass http://minio-console;
+    }
+    location /ws {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $http_host;
+        proxy_pass http://minio-console;
+    }
+}    
+```
+
+
+
+### Grafana
+
+```nginx
+server {
+    listen 3000;
+    server_name grafana;
+    
+    # 前缀是否是 grafana 根据实际 grafana 配置判断
+	location ^~ /grafana {
+        proxy_buffering on;
+        proxy_buffers 100 200k;
+        proxy_set_header Host $http_host;
+        proxy_pass http://127.0.0.1;
+        gzip on;
+    }
+    location ^~ /grafana/api/live {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $http_host;
+        proxy_pass http://127.0.0.1;
+    }
+}
+```
 
 
 
