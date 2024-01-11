@@ -1307,6 +1307,56 @@ server {
 
 
 
+#### 代理上游HTTPS
+
+反向代理上游服务器是HTTPS时，你可能见过这种错误
+
+> SSL_do_handshake() failed (SSL：error：14077438：SSL routines：SSL23_GET_SERVER_HELLO：tlsv1 alert internal error) ...
+
+上述错误是TLS 握手时 证书 SNI 校验失败导致的，看error.log并不能很明显的看出原因
+
+下面时反向代理上游是HTTPS可能使用的配置
+
+```nginx
+server {
+	listen 80;
+	location / {
+        # 上游地址： https://test.com;
+		proxy_pass https://127.0.0.1:443;
+        # 设置 Host 头
+		proxy_set_header Host test.com;
+        # 启用将 server_name 添加到 client hello extension 字段中 
+        # 启用SNI 
+        proxy_ssl_server_name on;
+        # 覆盖SNI 传递的域名字段 用于证书校验
+        proxy_ssl_name test.com;
+        # 算法
+        proxy_ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256;
+        # 协议版本
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        # 配置客户端证书
+        proxy_ssl_certificate     cert/client.pem;
+        # 配置客户端密钥
+        proxy_ssl_certificate_key cert/client.key;
+		
+        # 开启证书校验 默认不开启
+        proxy_ssl_verify on;
+        # 被信任的CA机构证书
+        proxy_ssl_trusted_certificate cert/trusted_ca_cert.crt;
+        # 验证深度（顶级CA机构->下层CA机构）
+		proxy_ssl_verify_depth 2;
+        
+        # 复用SSL握手会话 加速连接
+		proxy_ssl_session_reuse on;
+	}
+}
+```
+
+
+[Back To Toc](#nginx-notes)
+
+
+
 ### 请求缓冲
 
 请求缓冲指 读取请求时 client_body_buffer_size 的相关配置，相关概念比较容易忘记或混淆，笔记一下
@@ -2463,6 +2513,26 @@ server {
             --with-openssl-opt=enable-ntls  \
             --with-ntls \
             --with-http_ssl_module
+
+# 列举一些其他模块
+./configure --prefix=/app/angie \
+            --with-openssl=../Tongsuo-8.3.3 \
+            --with-openssl-opt=enable-ntls  \
+            --with-ntls \
+            --with-http_ssl_module \
+            --with-http_flv_module \
+			--with-http_mp4_module \
+            --with-http_addition_module \
+            --with-http_realip_module \
+            --with-http_slice_module \
+            --with-http_stub_status_module \
+            --with-http_sub_module \
+            --with-http_v2_module \
+            --with-http_v3_module \
+            --with-stream \
+            --with-stream_geoip_module \
+            --with-stream_realip_module
+
 
 make -j
 make install
