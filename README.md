@@ -26,36 +26,41 @@
       * [HTTP反向代理](#http反向代理)
       * [HTTPS反向代理](#https反向代理)
       * [NGINX域名处理](#nginx域名处理)
-      * [代理上游HTTPS](#代理上游HTTPS)
+      * [代理上游HTTPS](#代理上游https)
     * [请求缓冲](#请求缓冲)
     * [代理缓冲](#代理缓冲)
     * [正向代理](#正向代理)
     * [静态缓存](#静态缓存)
     * [逻辑判断](#逻辑判断)
+    * [正则匹配](#正则匹配)
     * [处理跨域](#处理跨域)
+    * [密码认证](#密码认证)
     * [安全配置](#安全配置)
     * [真实IP透传](#真实ip透传)
     * [区分浏览器](#区分浏览器)
-    * [Cookie设置](#Cookie设置)
+    * [Cookie设置](#cookie设置)
     * [Websockets](#websockets)
     * [代理UDP协议](#代理udp协议)
     * [MAP控制上游](#map控制上游)
     * [其他配置/资料](#其他配置资料)
-      * [Location 失效](#location-失效)
-      * [Location 详解](#location-详解)
-      * [Proxy\_pass 后置处理](#proxy_pass-后置处理)
-      * [Root 和 alias](#root-和-alias)
-      * [Try\_files](#try_files)
-      * [Proxy\_redirect](#proxy_redirect)
-      * [Proxy\_cookie\_domain](#proxy_cookie_domain)
+      * [location 失效](#location-失效)
+      * [location 详解](#location-详解)
+      * [proxy\_pass 后置处理](#proxy_pass-后置处理)
+      * [root 和 alias](#root-和-alias)
+      * [try\_files](#try_files)
+      * [proxy\_redirect](#proxy_redirect)
+      * [proxy\_cookie\_domain](#proxy_cookie_domain)
+      * [proxy\_protocol](#proxy_protocol)
+      * [reuseport](#reuseport)
+      * [worker\_connections](#worker_connections)
   * [常见的状态码问题分析](#常见的状态码问题分析)
     * [101](#101)
     * [400](#400)
     * [408](#408)
     * [413](#413)
   * [常用软件代理转发配置](#常用软件代理转发配置)
-    * [Minio](#Minio)
-    * [Grafana](#Grafana)
+    * [Minio](#minio)
+    * [Grafana](#grafana)
 * [ANGIE](#angie)
   * [编译](#编译)
   * [国密支撑](#国密支撑)
@@ -1813,6 +1818,34 @@ server {
 
 
 
+### 密码认证
+
+生成密码
+
+在当前目录生成文件名为auth的认证文件，用户名为username，密码是执行下面的命令后提示需要输入的密钥
+
+```bash
+htpasswd -c ./auth username
+```
+
+添加NGINX配置
+
+```nginx
+server {
+    listen 80;
+    # 也可以放在 location 下
+    auth_basic "请输入认证信息";
+    auth_basic_user_file auth;
+    ...
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
 ### 安全配置
 
 记录一些安全配置
@@ -2062,7 +2095,7 @@ server {
 
 ### 其他配置/资料
 
-#### Location 失效
+#### location 失效
 
 ``` nginx	
 server {
@@ -2092,7 +2125,7 @@ server {
 
 
 
-#### Location 详解
+#### location 详解
 
 > 内容引用自 [nginx的location与proxy_pass指令超详细讲解及其有无斜杠( / )结尾的区别 - 顾志兵 - 博客园 (cnblogs.com)](https://www.cnblogs.com/sandgull/p/column-nginx-config_of_location_and_proxy_pass_and_the_difference_of_absence_of_tail_slash.html)
 >
@@ -2181,7 +2214,7 @@ location / {
 
 
 
-#### Proxy_pass 后置处理
+#### proxy_pass 后置处理
 
 location 和 proxy_pass 的uri转化规则很容易忘记，记录一下
 
@@ -2227,7 +2260,7 @@ server {
 
 
 
-#### Root 和 alias
+#### root 和 alias
 
 ```nginx
 server {
@@ -2256,7 +2289,7 @@ server {
 
 
 
-#### Try_files
+#### try_files
 
 try_files 在不是哈希路由的前端项目用的比较多，需要配置try_files 在当页面刷新时，重新定位到index.html 否则会404
 
@@ -2281,7 +2314,7 @@ server {
 
 
 
-#### Proxy_redirect
+#### proxy_redirect
 
 当服务端返回的重定向地址并不是期望的地址时 需要使用proxy_redirect 用于调整返回的 location
 
@@ -2305,7 +2338,7 @@ server {
 
 
 
-#### Proxy_cookie_domain 
+#### proxy_cookie_domain 
 
 NGINX在代理 依赖cookie认证模式的系统时，服务端返回的cookie domain并不一定和NGINX代理后的地址相同，cookie domain 和浏览器访问地址不同会导致写入cookie被阻止，这时就需要使用 proxy_cookie_domain 命令调整服务端返回的cookie
 
@@ -2320,6 +2353,122 @@ server {
     }
 }
 ```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### proxy_protocol
+
+记录一个不太常见的配置
+
+proxy_protocol 表示开启NGINX支持 proxy protocol 协议
+
+> proxy_prorocol 是一种透传协议，可以更方便的获取请求源地址;
+>
+> 相关文档：[haproxy.org/download/1.8/doc/proxy-protocol.txt](https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt)
+
+开启协议后可以通过变量获取 proxy protocol 请求的信息 例如：
+
+$proxy_protocol_addr、$proxy_protocol_port、$proxy_protocol_server_addr、$proxy_protocol_server_port 等
+
+```nginx
+server {
+    listen 80 proxy_protocol;
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### reuseport
+
+reuseport 是提升nginx性能比较关键的配置，放在listen配置后，如下
+
+reuseport 是启用内核 SO_REUSEPORT 功能的配置
+
+该功能允许多个进程/线程 bind/listen 相同的 IP/PORT，提升了新链接的分配性能
+
+详细参考官方对 reuesport 的解释：[Socket Sharding in NGINX OSS Release 1.9.1](https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/)
+
+```nginx
+server {
+    listen 80 reuseport;
+}
+```
+
+为nginx设置1080端口，两个工作进程，测试开启 reuseport 前后的 socket 变化
+
+```bash
+# 1080 未添加 reuseport
+# master 只创建一个 socket bind listen 1080
+# worker 进程拷贝 master 所以有 3个 socket
+[nginx@nginx conf]$ lsof -i:1080
+COMMAND   PID  USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+nginx   32906 nginx    5u  IPv4 8355385      0t0  TCP *:socks (LISTEN)
+nginx   37791 nginx    5u  IPv4 8355385      0t0  TCP *:socks (LISTEN)
+nginx   37792 nginx    5u  IPv4 8355385      0t0  TCP *:socks (LISTEN)
+[nginx@nginx conf]$ netstat -atnp | grep 1080
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+tcp        0      0 0.0.0.0:1080            0.0.0.0:*               LISTEN      32906/nginx: master 
+# 修改配置 1080 添加 reuseport
+[nginx@nginx conf]$ vim nginx.conf
+[nginx@nginx conf]$ ../sbin/nginx -s reload
+# 由于设置两个工作进程 nginx master进程分别创建两个 socket 并且设置 so_reuseport 再对1080端口进行 bind 和 listen
+# 当nginx worker进程 fork master进程时 对应也拷贝了相应的socket
+# 实现了多个进程 独自bind listen相同的端口
+[nginx@nginx conf]$ lsof -i:1080
+COMMAND   PID  USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME
+nginx   32906 nginx    5u  IPv4 8355385      0t0  TCP *:socks (LISTEN)
+nginx   32906 nginx    8u  IPv4 8378295      0t0  TCP *:socks (LISTEN)
+nginx   38492 nginx    5u  IPv4 8355385      0t0  TCP *:socks (LISTEN)
+nginx   38492 nginx    8u  IPv4 8378295      0t0  TCP *:socks (LISTEN)
+nginx   38493 nginx    5u  IPv4 8355385      0t0  TCP *:socks (LISTEN)
+nginx   38493 nginx    8u  IPv4 8378295      0t0  TCP *:socks (LISTEN)
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### worker_connections
+
+worker_connections，设置**单个工作进程**可以允许**同时**建立外部连接的数量，数字越大，能同时处理的连接越多，这里的外部链接**不仅仅是来自客户端的，也包括向上游发起的建链**
+
+当NGINX**仅**作为WEB服务器时，设置为系统最大打开文件数即可
+
+当NGINX**仅**作为反向代理服务器时，至多为 1/2 系统最大打开文件数
+
+其他情况可以设置为近似的中间值，例如最大打开文件数为 65535，可以调整 worker_connections 为 20960
+
+需要注意的是，在默认的nginx.conf配置中 worker_connections 是 1024，这个配置对于生产环境是非常危险的，稍频繁的网站 1024 的设置远远不够
+
+这个值主要更具内存和操作系统进程最大打开文件数进行设置
+
+* 一般情况下，以现在的计算机硬件水平不需要考虑连接带来的内存影响，除非设置的值真的非常非常大
+* 可以通过  ulimit -n 查询最大打开文件数，可能是1024 或者 65535
+* 可以通过 cat /proc/nginx_woker_pid/limits 查看当前工作进程的最大打开文件数
+* 也可以通过 nginx 配置（worker_rlimit_nofile）调整**worker进程**的最大打开文件数（**需要使用特权用户运行nginx，如root**）
+
+```nginx
+worker_processes 2; 
+worker_rlimit_nofile 65535;
+events {
+   worker_connections 65535; 
+}
+```
+
+
+
+在 worker进程收到的连接已经超过 woker_connections 设置的值后，新的连接会进入排队状态，当超过内核参数 net.core.netdev_max_backlog 设置的数据包最大排队数后，将不再接收新的连接，客户端请求将会失败
 
 
 
