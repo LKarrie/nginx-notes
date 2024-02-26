@@ -36,6 +36,7 @@
     * [处理跨域](#处理跨域)
     * [密码认证](#密码认证)
     * [安全配置](#安全配置)
+    * [压缩配置](#压缩配置)
     * [真实IP透传](#真实ip透传)
     * [区分浏览器](#区分浏览器)
     * [Cookie设置](#cookie设置)
@@ -52,7 +53,12 @@
       * [proxy\_cookie\_domain](#proxy_cookie_domain)
       * [proxy\_protocol](#proxy_protocol)
       * [reuseport](#reuseport)
+      * [accept\_mutex](#accept_mutex)
       * [worker\_connections](#worker_connections)
+      * [tcp\_nodelay](#tcp_nodelay)
+      * [sendfile](#sendfile)
+      * [tcp\_nopush](#tcp_nopush)
+      * [multi\_accept](#multi_accept)
   * [常见的状态码问题分析](#常见的状态码问题分析)
     * [101](#101)
     * [400](#400)
@@ -726,7 +732,7 @@ http{
 
 引用一下官方的一张图，展示一下vts的监控html页面
 
-<img src="assets/nginx-vts" alt="nginx-vts" style="zoom: 50%;" />
+<img src="assets/nginx-vts.png" alt="nginx-vts" style="zoom: 50%;" />
 
 详细分析一下这个html展示的内容
 
@@ -734,7 +740,7 @@ http{
 
   server main 主要展示了 当前NGINX的总体状态，例如运行机器的 hostname、nginx版本、nginx进程最后一次更新或启动到现在的时间、总体的链接情况、总体的请求情况、和vts所依赖的共享内存的区域状态（vts模块记录的这些指标存储在这里）
 
-  <img src="assets/nginx-vts-servermain" alt="nginx-vts-servermain" style="zoom: 50%;" />
+  <img src="assets/nginx-vts-servermain.png" alt="nginx-vts-servermain" style="zoom: 50%;" />
 
   
 
@@ -742,7 +748,7 @@ http{
 
   server zone 主要是对每一个 server 配置下面的 请求处理的状态，你可以查看你的每一个nginx server 配置下的请求状态（例如请求响应状态1xx 2xx 3xx 4xx 5xx的情况、流量情况等）
 
-  <img src="assets/nginx-vts-serverzones" alt="nginx-vts-serverzones" style="zoom: 50%;" />
+  <img src="assets/nginx-vts-serverzones.png" alt="nginx-vts-serverzones" style="zoom: 50%;" />
 
   **注意**：如果没有设置server_name的server server_name 会缺省为 "_" ；
 
@@ -786,7 +792,7 @@ http{
 
   实现效果如下，可以看到filters对应的group为server下的server_name，每个gourp监控的key为具体的httpcode 200、206、301等等
 
-  <img src="assets/nginx-vts-filters" alt="nginx-vts-filters" style="zoom: 50%;" />
+  <img src="assets/nginx-vts-filters.png" alt="nginx-vts-filters" style="zoom: 50%;" />
 
   **vhost_traffic_status_filter_by_set_key 后关于key的设置除了 $status 也可以设置其他变量，如果设置了其他变量就相当于监控每个server下的这个变量维度的1xx 2xx 3xx 4xx 5xx 出入流量 等状态**
 
@@ -883,7 +889,7 @@ nginx_vts_start_time_seconds 1686053290.672
 
 有一些改动的Nginx Vts Grafana监控大盘
 
-  <img src="assets/nginx-vts-grafana" alt="nginx-vts-grafana" style="zoom: 50%;" />
+  <img src="assets/nginx-vts-grafana.png" alt="nginx-vts-grafana" style="zoom: 50%;" />
 
 
 
@@ -911,13 +917,13 @@ curl 'http://127.0.0.1:9913/status/control?cmd=status&group=server&zone=::main'
 
 * 在传统虚机部署中，你可以依赖keepalived做软VIP的主备架构
 
-  ![nginx-unit2](assets/nginx-unit2)
+  ![nginx-unit2](assets/nginx-unit2.png)
 
 
 
 * 或者依赖硬件设备（F5等），做负载均衡形成集群
 
-  ![nginx-unit1](assets/nginx-unit1)
+  ![nginx-unit1](assets/nginx-unit1.png)
 
 
 
@@ -1075,11 +1081,11 @@ systemctl restart keepalived
 
 主节点 192.168.202.130
 
-![image-nginx-keepalived-130](assets/nginx-keepalived-130)
+![image-nginx-keepalived-130](assets/nginx-keepalived-130.png)
 
 备节点 192.168.202.129
 
-![image-nginx-keepalived-129](assets/nginx-keepalived-129)
+![image-nginx-keepalived-129](assets/nginx-keepalived-129.png)
 
 **注意**：
 
@@ -1328,9 +1334,9 @@ server {
 	listen 80;
 	location / {
         # 上游地址： https://test.com;
-		proxy_pass https://127.0.0.1:443;
+        proxy_pass https://127.0.0.1:443;
         # 设置 Host 头
-		proxy_set_header Host test.com;
+        proxy_set_header Host test.com;
         # 启用将 server_name 添加到 client hello extension 字段中 
         # 启用SNI 
         proxy_ssl_server_name on;
@@ -1377,18 +1383,18 @@ http {
     client_max_body_size 1m;
 
     # 设置读取请求体的缓存区大小 超过此大小将 写入临时文件
-	client_body_buffer_size 8k;
+    client_body_buffer_size 8k;
 
     # 限制请求头的大小
     # 请求头 例如 Host lkarrie.com
     # 超过此值 large_client_header_buffers 配置生效
-	client_header_buffer_size 1k;
+    client_header_buffer_size 1k;
 
     # 限制超过 client_header_buffer_size 的请求 请求行和请求头大小
     # 请求行(request line)的大小不能超过 8k（设置值） 否则返回414 (Request-URI Too Large) 错误
     # 每一个请求头不能超过 8k（设置值） 否则返回400
     # 请求行和请求头总大小不能超过 4x8k（32k 设置值）
-	large_client_header_buffers 4 8k;
+    large_client_header_buffers 4 8k;
     
     # ...
 }
@@ -1398,11 +1404,11 @@ http {
 ```nginx
 http {
     # ...
-	client_max_body_size 100m;
-	client_body_buffer_size 128k;
-	client_header_buffer_size 256k;
-	large_client_header_buffers 4 256k; 
-	# ...
+    client_max_body_size 100m;
+    client_body_buffer_size 128k;
+    client_header_buffer_size 256k;
+    large_client_header_buffers 4 256k; 
+    # ...
 }
 ```
 
@@ -1740,20 +1746,20 @@ NGINX中常见的匹配正则语法
 
 ```nginx
 location ~* ^/test {
-	# 设置content type
+    # 设置content type
     # 如果不设置 在浏览器上请求 不会用html形式展示 会直接变成附件下载 
-	default_type text/html ;
+    default_type text/html ;
 	
     # 测试正则
     # 当访问
     # http://localhost/test?method=GET
-	# http://localhost/test?test=test&method=GET
-	# http://localhost/test?method=GET&test=test
+    # http://localhost/test?test=test&method=GET
+    # http://localhost/test?method=GET&test=test
     # $1 捕获的就是 GET
 	if ($query_string ~ ".*(?:^|\?|&)method=(.+?)(?:(?:&.*)|$)") { 
-		return 200  "$1"; 
-	}
-	return 200  "default";
+        return 200  "$1"; 
+    }
+    return 200  "default";
 }
 ```
 
@@ -1906,6 +1912,94 @@ CSRF和防盗链
   ```
 
   
+
+[Back To Toc](#nginx-notes)
+
+
+
+### 压缩配置
+
+Nginx对前端资源的压缩分为两种，动态压缩和静态压缩
+
+* 动态压缩
+  * 由 nginx ngx_http_gzip_module 处理，属于默认模块
+  * 当Nginx向浏览器返回资源文件时，虽然文件本事并不是.gz结尾，Nginx会消耗CPU资源进行压缩，再将压缩后的内容返回给浏览器
+
+* 静态压缩
+  * 由 nginx ngx_http_gzip_static_module 处理，不是默认模块
+  * 基于前端框架的项目在打包过程中资源会根据配置构建生成.gz结尾的文件，项目在Nginx部署后，对于资源请求Nginx将直接返回压缩包
+
+可以通过响应头可以判断资源是否被压缩，以谷歌浏览器为例，F12打开控制台后，请求信息栏中右键选择响应头，选择Content-Encoding，添加展示Content-Encoding头信息，其中为gzip则表示当前资源开启了gzip压缩，无则没有开启
+
+![image-nginx-gzip1.png](assets/nginx-gzip-1.png)
+
+**动态压缩**
+
+NGINX Gzip配置
+
+```nginx
+http {
+	...
+	# 开启 gzip
+    gzip on;
+    # 设置最小的压缩配置 小于1k 不做gzip压缩 
+    gzip_min_length 1k;
+    # 设置压缩缓冲区 4 块 每块大小16k
+    gzip_buffers 4 16k;
+    # 开启gzip的 http请求协议
+    # 默认 1.1
+    # 在多层nginx嵌套下要注意这里的设置 nginx —> nginx(upstream) 之间默认是 http 1.0 和gzip_http_version的默认值不匹配
+    # 上述情况 需要在上游nginx中设置 gzip_http_version 1.0
+    gzip_http_version 1.1;
+    # 压缩级别1-10 和 CPU 占用相关 数字越高CPU占用越高 5以上压缩大小没有明显提升 
+    gzip_comp_level 5;
+    # 压缩文件的类型
+    # 这里需要注意 所设置的类型和后缀映射 必须在 mime.types 中存在 通常只对文本类文件进行gzip压缩
+    gzip_types text/css text/xml text/plain application/javascript application/rss+xml font/woff font/woff2;
+    # 设置当前nginx作为被代理节点时是否启用gzip
+    # 其他代理节点向当前nginx请求文件且请求包含Via头(Via: XXX)时 gzip_proxied配置才会生效 gzip_proxied根据请求或响应头来判断是否开启gzip
+    # 默认 off 可以同时设置多个
+    # 可选的值 如下
+	# any		所有被代理请求均开启Gzip
+    # off		被代理时禁止Gzip
+	# expired	响应头包含Expires 禁用Gzip
+	# no-cache	响应头Cache-Control为no-cache 禁用Gzip
+	# no-store	响应头Cache-Control为no-store 禁用Gzip
+	# private	响应头Cache-Control为private 禁用Gzip
+	# no_etag	响应头不包含ETag 禁用Gzip
+	# auth		请求头包含Authorization 禁用Gzip
+    # no_last_modified	响应头不包含Last-Modified 禁用Gzip
+    gzip_proxied any;
+    # 添加响应头 Vary: Accept-Encoding
+    gzip_vary on;
+    # 根据 User-Agent 禁用 gzip 下面当为 ie浏览器访问时 禁用gzip
+    gzip_disable "MSIE [1-6]\.";
+	...
+}
+```
+
+**静态压缩**
+
+需要根据实际的后缀文件设置 gzip_static
+
+```nginx
+server {
+	...
+	root   html;
+
+	location ~ \.(js|mjs|json|css|html)$ {
+        gzip_static on;
+	}
+
+	location / {
+		try_files $uri $uri/ /index.html;
+        index  index.html index.htm;
+  	}
+    ...
+}
+```
+
+
 
 [Back To Toc](#nginx-notes)
 
@@ -2223,9 +2317,9 @@ location 和 proxy_pass 的uri转化规则很容易忘记，记录一下
 ```nginx
 server {
     listen 80;
-    
+
     #请求url http://localhost/a/b/c/d
-    
+
     #配置1
     #proxy pass 后地址 http://localhost/c/d
     location /a/b/ {
@@ -2246,7 +2340,7 @@ server {
     }
 
     #配置4
-	#proxy pass 后地址 http://localhost/e/c/d    
+    #proxy pass 后地址 http://localhost/e/c/d    
     location /a/b/ {
             proxy_pass http://localhost:8080/e/;
             proxy_set_header X-Real-IP $remote_addr;
@@ -2433,6 +2527,34 @@ nginx   38493 nginx    5u  IPv4 8355385      0t0  TCP *:socks (LISTEN)
 nginx   38493 nginx    8u  IPv4 8378295      0t0  TCP *:socks (LISTEN)
 ```
 
+还需要注意一点，当reuseport打开时，**accept_mutex** 配置是被忽略的
+
+
+
+#### accept_mutex
+
+Nginx 互斥锁配置，accept_mutex主要时为了解决“惊群效应”带来的问题，如果开启Nginx工作进程会串行工作处理新的连接，否则将会以类似广播的方式处理新连接，**1.11.3版本后默认 off**
+
+互斥锁属于性能优化配置，个人认为已经过时，如果考虑优化Nginx性能，优先使用reuseport，不启用此项配置
+
+在高版本的linux中（4.5后），惊群问题已经由系统层面解决，Nginx也将默认 accept_mutex 默认on 转为 off
+
+参考:[epoll: add EPOLLEXCLUSIVE flag · torvalds/linux@df0108c · GitHub](https://github.com/torvalds/linux/commit/df0108c5da561c66c333bb46bfe3c1fc65905898)
+
+引用官方对开启 accept_mutex的建议
+
+> There is no need to enable `accept_mutex` on systems that support the [EPOLLEXCLUSIVE](https://nginx.org/en/docs/events.html#epoll) flag (1.11.3) or when using [reuseport](https://nginx.org/en/docs/http/ngx_http_core_module.html#reuseport).
+
+```nginx
+events {
+    worker_connections 4096;
+    
+    # 配置举例 非特殊情况不需要启用
+    accept_mutex on; 
+    accept_mutex_delay 100ms;
+}
+```
+
 
 
 [Back To Toc](#nginx-notes)
@@ -2443,9 +2565,9 @@ nginx   38493 nginx    8u  IPv4 8378295      0t0  TCP *:socks (LISTEN)
 
 worker_connections，设置**单个工作进程**可以允许**同时**建立外部连接的数量，数字越大，能同时处理的连接越多，这里的外部链接**不仅仅是来自客户端的，也包括向上游发起的建链**
 
-当NGINX**仅**作为WEB服务器时，设置为系统最大打开文件数即可
+当 Nginx **仅**作为WEB服务器时，设置为系统最大打开文件数即可
 
-当NGINX**仅**作为反向代理服务器时，至多为 1/2 系统最大打开文件数
+当 Nginx **仅**作为反向代理服务器时，至多为 1/2 系统最大打开文件数
 
 其他情况可以设置为近似的中间值，例如最大打开文件数为 65535，可以调整 worker_connections 为 20960
 
@@ -2466,9 +2588,155 @@ events {
 }
 ```
 
-
-
 在 worker进程收到的连接已经超过 woker_connections 设置的值后，新的连接会进入排队状态，当超过内核参数 net.core.netdev_max_backlog 设置的数据包最大排队数后，将不再接收新的连接，客户端请求将会失败
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### tcp_nodelay
+
+在**长连接**的情况下，tcp_nodelay 能够解决小包阻塞的问题，**默认 on**，即关闭  TCP Nagle 算法
+
+要理解这项配置的含义需要了解TCP传输中的 Nagle 和 Delayed Ack
+
+Nagle算法规定，在发送数据包时，满足以下任意一个条件时才允许发送（Nagle算法降低了网络中小包的数量，假如实际数据只有1KB，被立即发送时会携带40KB的包头，大量小包被发送时 payload 利用率低，严重会导致网络瘫痪）
+
+* 积累的数据量到达最大的 TCP Segment Size（MSS）
+
+* 收到了一个 Ack
+
+Delayed Ack规定不针对单个包发送Ack，Ack在以下情况时发送（降低网络中ACK数量，提升网络性能）
+
+* 一次确认两个包
+* 发送响应时携带Ack
+* 触发超时时间（40ms）后再发送Ack
+
+发送方和接收方 Nagle 和 Delayed Ack 互相作用，在**连续发送两个包，立刻进行读操作时，会产生40ms的延迟**，通过下面的一段伪码来解释出现问题的这种情况
+
+```markdown
+# 当发送方启用 Nagle 接收方启用 Delayed Ack
+# Nagle 算法逻辑
+# 当有数据需要发送时
+if there is new data to send
+  # 假设 数据一共 四个包 前两大包（大于MSS） 后两个一个中包和一个小包（小于MSS，且小包不是包含Fin标志的包）
+  # 步骤1：两个大包会被立刻发送 接收方也必须返回Ack 确认这两个大包
+  if the window size >= MSS and available data is >= MSS
+    send complete MSS segment now
+  else 
+    if there is unconfirmed data still in the pipe
+      # 步骤3：最后一个小包数据小于 MSS 前一个中包未被Ack 存在未确认数据 
+      # 最后一个 小包会进入缓冲 等待发送
+      # 由于接收方遵循 Delayed Ack 会在40ms之后再发送Ack 所以这个小包会延迟40ms后被发送
+      enqueue data in the buffer until an acknowledge is received
+    else
+      # 步骤2：中包被发送时发送数据小于 MSS 但是由于前两个大包被Ack没有待确认的数据 中包也会立刻被发送 
+      send data immediately
+    end if
+  end if
+end if
+# 上述情况 会产生40ms的延迟 且上述情况只会发生在 连接状态为 keep-alive 时
+# 在连接非持久的短链接情况下 最后的小包会随连接关闭立刻发送 
+# 即短链接并不存在小包阻塞问题
+```
+
+综上，在Nginx启用长连接，tcp_nodelay 为 on 时能优化网络连接传输，建议不要设置成 off
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### sendfile
+
+sendfile配置是控制开启或关闭使用sendfile()，sendfile()是磁盘和传输控制协议之前的一种系统呼叫，它提供的”零拷贝(zero-copy)“机制
+
+可以让数据直接从主机存储传送到网卡缓冲块中
+
+正常情况下被发送的数据会首先通过read()呼叫从磁盘拷贝进系统高速缓冲存储器中（内存），再使用write()呼叫将缓冲区内容发送到网络，这个过程涉及两次上下文切换，会占用较多的CPU
+
+在使用sendfile()呼叫时，数据会从磁盘直接进入网卡缓冲区，跳过了将数据拷贝进出系统高速缓冲存储器的过程，降低CPU占用
+
+```nginx
+http {
+    ...
+    # 生产环境 建议三者同时开启
+    sendfile       on;
+    tcp_nopush     on;
+    tcp_nodelay	   on;
+
+    server {
+        ...
+        # 也可以在location块中设置 sendfile
+        location /video/ {
+            sendfile       on;
+            tcp_nopush     on;
+            aio            on;
+        }
+        ...
+    }
+    ...
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### tcp_nopush
+
+通过设置tcp_nopush on，可以让nginx使用 TCP cork 机制，默认 off
+
+启用后，可以使 Nginx 在一段时间内积累多个小的数据包，然后一次性发送它们
+
+看似 tcp_nopush 和 tcp_nodely 是互斥的，个人理解这两项配置只是作用的层面不通，tcp_nodely 决定需不需要立刻发送包，而tcp_nopush 是对已经就绪发送的包进行阻塞，满足条件之后再进行发送，在介绍tcp_nodely的伪码内容中，假设tcp_nopush起作用，它就会阻塞第三个包（中包）的发送
+
+Linux 2.5.9 以后的版本中，`tcp_nopush` 和 `tcp_nodelay` 是可以兼容的，两者同时作用进行网络传输优化
+
+和系统层面相同，Nginx也可以同时配置 tcp_nopush on 和 tcp_nodelay on
+
+个人理解在两者同时配置开启时，nginx首先会通过 tcp_nopush 确保每个数据包都被填满，最后一个包时 tcp_nodelay 生效将最后一个包强制发出而不进行等待和阻塞
+
+```nginx
+http{
+    ...
+    # 生产环境 建议三者同时开启
+    sendfile on; 
+    tcp_nopush on; 
+    tcp_nodelay on; 
+    ...
+}
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+#### multi_accept
+
+个人建议 无需启用
+
+```nginx
+events {
+    worker_connections 4096; 
+
+    # 使用epoll事件模型
+    use epoll;
+
+    # 使用工作进程一直循环接受新网络连接请求 直到系统返回EAGAIN
+	# 默认 off
+    # 在连接没达到一定数量级时不要尝试开启 会造成连接分配不均衡
+    # 参考NGINX核心开发者的邮件 https://forum.nginx.org/read.php?21,267183,267526#msg-267526
+    multi_accept on; 
+}
+```
 
 
 
