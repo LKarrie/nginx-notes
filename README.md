@@ -59,6 +59,7 @@
       * [sendfile](#sendfile)
       * [tcp\_nopush](#tcp_nopush)
       * [multi\_accept](#multi_accept)
+      * [default\_server](#default_server)
   * [常见的状态码问题分析](#常见的状态码问题分析)
     * [101](#101)
     * [400](#400)
@@ -2744,6 +2745,55 @@ events {
 
 
 
+#### default_server
+
+最近遇到了一个default_server（顾名思义是对多个有相同端口监听的server，设置其中一个server做为默认server，当请求未被server_name匹配上时，使用被标记默认的server处理当前请求）加载顺序的问题，简单记录一下
+
+如果存在两个配置文件，如下
+
+a.conf
+
+```nginx
+server {
+    listen 80;
+    server_name a.test.com;
+    location / {
+            default_type text/html;
+            return 200 "a";
+    }
+}
+```
+
+b.conf
+
+```nginx
+server {
+    listen 80;
+    # 如果期望 直接访问 127.0.0.1 80 由 b.conf 处理
+    # 可以进行如下修改 
+    # listen 80 default_server;
+    # 或者 通过重命名配置文件 让原本的 b.conf 再 a.conf 之前加载(比如将 b.conf重命名为c.conf a.conf重命名为d.conf)
+    location / {
+            default_type text/html;
+            return 200 "b";
+    }
+}
+```
+
+当访问 a.test.com 时 得到的返回是 a，当访问 127.0.0.1:80 时 得到的返回也是 a 但是我们期望访问 127.0.0.1:80 得到的返回是b
+
+这个问题是由 nginx 配置文件加载顺序 和 default_server 自动设置导致的
+
+引用 nginx 官方对 default_server 的解释，其中说明了当未对任何相同 listen 的 server 设置 default_server 时，nginx 会默认为在配置中第一个读取的 server 自动标记 default_server，又因为 a.conf b.conf 在被读取顺序上是完全按照字母大小（可以通过 ls 验证在前的配置文件先被读取）所以 a.conf 先被读取且被自动标记了 default_server，故产生了当访问 127.0.0.1:80 时 得到的返回也是 a 的问题
+
+> The `default_server` parameter, if present, will cause the server to become the default server for the specified `*address*`:`*port*` pair. If none of the directives have the `default_server` parameter then the first server with the `*address*`:`*port*` pair will be the default server for this pair.
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
 ## 常见的状态码问题分析
 
 ### 101
@@ -2795,6 +2845,10 @@ client_header_timeout
 
 
 
+[Back To Toc](#nginx-notes)
+
+
+
 ### 413
 
 client intended to send too large body : xxx bytes
@@ -2824,6 +2878,8 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # 如果整个链路存在多层的反向代理 minio返回SignatureDoesNotMatch
+        # 尝试在 外层的反向代理中 将此项配置注释
         proxy_set_header Host $http_host;
 
         proxy_http_version 1.1;
@@ -2862,6 +2918,11 @@ server {
 ### Grafana
 
 ```nginx
+map $http_upgrade $connection_upgrade{
+    default upgrade;
+    '' close;
+}
+
 server {
     listen 3000;
     server_name grafana;
@@ -3040,7 +3101,7 @@ ssl_ntls  on;
 
 # dual NTLS certificate
 # sign.key 我们创建CSR的私钥
-# sign.key 是签名证书
+# sign.crt 是签名证书
 # enc.crt 是加密证书
 # enc.key 是加密私钥 一般证书签发机构不会直接提供给你 可能会提供一串加密的txt文件 需要联系相关厂商解密成 key文件 例如CFCA
 # 只在server 中配置 是单向国密
