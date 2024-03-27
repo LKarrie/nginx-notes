@@ -5,6 +5,7 @@
     * [初始化工作环境](#初始化工作环境)
     * [准备源码包](#准备源码包)
     * [编译安装](#编译安装)
+    * [动态编译](#动态编译)
   * [运维](#运维)
     * [热升级/重启](#热升级重启)
     * [日志管理](#日志管理)
@@ -256,6 +257,60 @@ script 存放keepalived探活脚本 或 一些定时任务脚本
 ├── scgi_temp
 ├── script
 └── uwsgi_temp
+```
+
+
+
+[Back To Toc](#nginx-notes)
+
+
+
+### 动态编译
+
+动态编译主要指编译时通过 add-dynamic-module 设置需要动态编译的模块，个人不是很常用，简单备忘一下编译和使用过程
+
+```markdown
+# 创建nginx安装路径
+mkdir -p /app/nginx2
+# 创建构建编译nginx路径
+mkdir -p /app/nginx_build2
+# 创建存放nginx动态模块路径
+mkdir -p /app/nginx_build2/dynamic-module
+# 准备编译
+cd /app/nginx_build2
+# 拉取nginx源码
+wget http://nginx.org/download/nginx-1.21.3.tar.gz
+tar -zxvf nginx-1.21.3.tar.gz
+# 拉取测试动态编译的模块
+git clone https://github.com/openresty/echo-nginx-module.git
+cd nginx-1.21.3
+# 设置编译参数
+# --modules-path 设置存放动态编译后生成的 .so 文件的路径
+# --add-dynamic-module 指定到动态编译的模块源码路径
+./configure --prefix=/app/nginx2 --with-compat --with-file-aio --with-threads --with-http_ssl_module --with-stream --with-stream_ssl_module --with-http_sub_module --modules-path=/app/nginx_build2/dynamic-module  --add-dynamic-module=../echo-nginx-module
+# 编译并安装
+make && make install
+# 构建完成后 可以观察到生成的 .so 文件
+# 以下目录会生成 ngx_http_echo_module.so
+ls /app/nginx_build2/dynamic-module/
+```
+
+**注意**：在使用被动态编译模块的配置时，需要在对应的配置文件的**首行**使用 load_module 配置引用对应的 模块.so 文件，如下
+
+```nginx
+load_module /app/nginx_build2/dynamic-module/ngx_http_echo_module.so;
+
+#user  nobody;
+worker_processes  1;
+
+#error_log  logs/error.log;
+#error_log  logs/error.log  notice;
+#error_log  logs/error.log  info;
+
+#pid        logs/nginx.pid;
+
+# ...
+# ...
 ```
 
 
