@@ -189,7 +189,7 @@ make intall
 openSSL升级
 
 ```bash
-cd /app
+cd /app/openssl
 wget https://www.openssl.org/source/openssl-1.1.1g.tar.gz
 tar -xvf openssl-1.1.1g.tar.gz
 cd openssl-1.1.1g
@@ -330,7 +330,7 @@ worker_processes  1;
 热升级或者热重启的使用场景：
 
 * NGINX版本升级（替换可执行文件），保证流量的同时进行升级
-* 在**开源社区版本**中NGINX会对本地DNS进行缓存，resolver配置未生效的情况下，只能热重启NGINX获取域名对应的最新IP
+* 在**开源社区版本**中NGINX会对本地DNS进行缓存，resolver配置未生效的情况下，只能热重启或尝试reload使NGINX获取域名对应的最新IP
 
 热升级具体操作如下
 
@@ -1179,10 +1179,13 @@ http{
         # 需要注意这个配置并不是限制 keepalive的链接数
         keepalive 32;
         # 单个keepalive链接最大处理的请求数
+        # 默认 1000 
         keepalive_requests 10000;
         # 空闲最大时间
+        # 默认 60s
         keepalive_timeout 60s;
         # 最大存活时间 1.19.10 版本后可配置
+		# 默认 1h
         keepalive_time 1h;
     }
     
@@ -1296,6 +1299,62 @@ HTTPS我使用的不是很多，目前工作中SSL卸载是在硬件上实现的
 推荐一个SSL 配置生成网站，可以一键生成NGINX的SSL配置
 
 [Mozilla SSL Configuration Generator](https://ssl-config.mozilla.org/)
+
+配置示例如下
+
+```nginx
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    # 侦听 ipv4
+    listen 443 ssl http2;
+    # 侦听 ipv6
+    listen [::]:443 ssl http2;
+
+    ssl_certificate /path/to/signed_cert_plus_intermediates;
+    ssl_certificate_key /path/to/private_key;
+    # 参考实际用途调整 APP 1h 网页 < 24h
+    ssl_session_timeout 60m;
+    # 本机内存缓存 无法解决分布式的问题
+    ssl_session_cache shared:SSL:30m;  # about 40000 * 3 sessions
+    # 由于安全问题关闭
+    # 服务器将 session 信息加密后保存在 session ticket 中交由客户端保存，客户端会在 client hello 的拓展中加上 session ticket，服务器解密后就可以恢复会话信息
+    # Nginx 和 Apache 都只在重启后才会更改加密使用的密钥
+    # session ticket 不具有前向保密性，并且一旦 session ticket 被解密会使 TLS 的前向保密性机制完全失效
+    ssl_session_tickets off;
+
+    # intermediate configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    # 设置启用加密算法
+    # 所有算法套件 openssl ciphers
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-CHACHA20-POLY1305;
+    # 关闭服务器端择要使用的算法套件
+    # 当支持 SSL3 或 TSLv1.1 时 客户端可能选择低安全的算法造成安全问题 所以需要设置 on
+    # 由于已经设置 ssl_protocols TLSv1.2 TLSv1.3 所以可以 off 此设置 让客户端选择自己性能首选的算法
+    ssl_prefer_server_ciphers off;
+
+    # HSTS (ngx_http_headers_module is required) (63072000 seconds)
+    add_header Strict-Transport-Security "max-age=63072000" always;
+
+    # OCSP stapling
+    # 服务器端发起OCSP验证证书 默认不开启 私有网络不开启
+    # ssl_stapling on;
+    # ssl_stapling_verify on;
+
+    # verify chain of trust of OCSP response using Root CA and Intermediate certs
+    # ssl_trusted_certificate /path/to/root_CA_cert_plus_intermediates;
+
+    # replace with the IP address of your resolver
+    # resolver 127.0.0.1;
+}
+```
 
 下面是个人博客使用到的一些配置，仅供参考
 
@@ -1457,6 +1516,7 @@ http {
 ```
 
 个人在生产环境中使用的配置
+
 ```nginx
 http {
     # ...
@@ -1834,12 +1894,12 @@ location ~* ^/test {
 * method=    表示直接匹配 method= 这些字符
 * (.+?)    分为两部分 () 和中间的 .+?
   *  ()    是捕获 expr 子模式（参考上文中的正则表达汇总参考语法）匹配后可以使用变量引用
-  * .+?    表示除换行符以外的所有字符，而且必须有一个（method=后没东西则不会命中正则）
+  *  .+?    表示除换行符以外的所有字符，而且必须有一个（method=后没东西则不会命中正则）
 * (?:(?:&.\*)|$)    分为两个部分(?:) 和中间的 (?:&.*)|$
   * (?:)    是忽略捕获的子模式（参考上文中的正则表达汇总参考语法）只匹配但是不捕获字符
-  *  (?:&.\*)|$    又可以分为两个部分  (?:&.*)  和 $ 中间的 | 表示或
+  * (?:&.\*)|$    又可以分为两个部分  (?:&.*)  和 $ 中间的 | 表示或
     *  (?:&.*)    表示以 &后跟着任意字符结尾
-    * $    表示直接结束
+    *  $    表示直接结束
 
 
 
@@ -1915,7 +1975,7 @@ server {
 避免点劫持漏洞（X-Frame-Options）
 
 *  add_header X-Frame-Options SAMEORIGIN;
-  * 效果：同源域名才可以进行调用和iframe嵌入
+   * 效果：同源域名才可以进行调用和iframe嵌入
 *  add_header X-Frame-Options ALLOW-FROM https://test.com;
    *  效果：被ALLOW的地址iframe才可以嵌入
    *  **注意**：
